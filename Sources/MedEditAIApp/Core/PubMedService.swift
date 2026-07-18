@@ -1,0 +1,78 @@
+import Foundation
+
+enum PubMedError: Error, LocalizedError {
+    case invalidURL
+    case emptyResult
+    case network(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: "PubMed 请求地址非法"
+        case .emptyResult: "检索结果为空"
+        case .network(let message): "网络错误：\(message)"
+        }
+    }
+}
+
+protocol PubMedFetching {
+    func search(query: String, maxResults: Int) async throws -> [String]
+    func fetch(pmids: [String]) async throws -> [PubMedRecord]
+}
+
+/// 真实调用 NCBI E-utilities（esearch / efetch）。遵守限流：串行 + 间隔。
+final class PubMedService: PubMedFetching {
+    private let session: URLSession
+    private let apiKey: String?
+    private let baseURL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+    private let minInterval: TimeInterval
+
+    init(session: URLSession = .shared, apiKey: String? = nil) {
+        self.session = session
+        self.apiKey = apiKey
+        self.minInterval = apiKey == nil ? 0.34 : 0.1
+    }
+
+    func search(query: String, maxResults: Int = 50) async throws -> [String] {
+        var components = URLComponents(string: "\(baseURL)/esearch.fcgi")
+        components?.queryItems = [
+            URLQueryItem(name: "db", value: "pubmed"),
+            URLQueryItem(name: "term", value: query),
+            URLQueryItem(name: "retmax", value: "\(maxResults)"),
+            URLQueryItem(name: "retmode", value: "json")
+        ] + apiKeyItems()
+        guard let url = components?.url else { throw PubMedError.invalidURL }
+
+        let (data, _) = try await session.data(from: url)
+        return Self.parseESearchIDs(from: data)
+    }
+
+    func fetch(pmids: [String]) async throws -> [PubMedRecord] {
+        guard !pmids.isEmpty else { throw PubMedError.emptyResult }
+        var components = URLComponents(string: "\(baseURL)/efetch.fcgi")
+        components?.queryItems = [
+            URLQueryItem(name: "db", value: "pubmed"),
+            URLQueryItem(name: "id", value: pmids.joined(separator: ",")),
+            URLQueryItem(name: "retmode", value: "xml")
+        ] + apiKeyItems()
+        guard let url = components?.url else { throw PubMedError.invalidURL }
+
+        try await Task.sleep(nanoseconds: UInt64(minInterval * 1_000_000_000))
+        let (data, _) = try await session.data(from: url)
+        let xml = String(decoding: data, as: UTF8.self)
+        return PubMedXMLParser.parseArticles(xml)
+    }
+
+    static func parseESearchIDs(from data: Data) -> [String] {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let result = object["esearchresult"] as? [String: Any],
+            let idList = result["idlist"] as? [String]
+        else { return [] }
+        return idList
+    }
+
+    private func apiKeyItems() -> [URLQueryItem] {
+        guard let apiKey, !apiKey.isEmpty else { return [] }
+        return [URLQueryItem(name: "api_key", value: apiKey)]
+    }
+}

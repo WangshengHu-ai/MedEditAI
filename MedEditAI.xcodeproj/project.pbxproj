@@ -1,0 +1,331 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		2A1A00000000000000000001 /* MedEditAIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000011 /* MedEditAIApp.swift */; };
+		2A1A00000000000000000002 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000012 /* AppViewModel.swift */; };
+		2A1A00000000000000000003 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000013 /* AppTheme.swift */; };
+		2A1A00000000000000000004 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000014 /* Components.swift */; };
+		2A1A00000000000000000005 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000015 /* Models.swift */; };
+		2A1A00000000000000000006 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000016 /* RootView.swift */; };
+		2A1A00000000000000000007 /* SampleData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000017 /* SampleData.swift */; };
+		2A1A00000000000000000008 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000018 /* Views.swift */; };
+		2A1A00000000000000000009 /* DomainModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000021 /* DomainModels.swift */; };
+		2A1A0000000000000000000A /* ColumnMappingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000022 /* ColumnMappingEngine.swift */; };
+		2A1A0000000000000000000B /* ClassificationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000023 /* ClassificationEngine.swift */; };
+		2A1A0000000000000000000C /* ArticleProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000024 /* ArticleProcessing.swift */; };
+		2A1A0000000000000000000D /* PubMedParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000025 /* PubMedParser.swift */; };
+		2A1A0000000000000000000E /* TemplateRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000026 /* TemplateRenderer.swift */; };
+		2A1B0000000000000000B001 /* CSVEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F001 /* CSVEngine.swift */; };
+		2A1B0000000000000000B002 /* ZipArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F002 /* ZipArchiver.swift */; };
+		2A1B0000000000000000B003 /* XLSXWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F003 /* XLSXWriter.swift */; };
+		2A1B0000000000000000B004 /* XLSXReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F004 /* XLSXReader.swift */; };
+		2A1B0000000000000000B005 /* PPTXTemplateFiller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F005 /* PPTXTemplateFiller.swift */; };
+		2A1B0000000000000000B006 /* PubMedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F006 /* PubMedService.swift */; };
+		2A1B0000000000000000B007 /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F007 /* LLMService.swift */; };
+		2A1B0000000000000000B008 /* EnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F008 /* EnrichmentService.swift */; };
+		2A1B0000000000000000B009 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F009 /* Persistence.swift */; };
+		2A1B0000000000000000B010 /* DocumentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F010 /* DocumentService.swift */; };
+		2A1A0000000000000000000F /* CoreServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000027 /* CoreServicesTests.swift */; };
+		2A1B0000000000000000BA01 /* CoreFunctionalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2A1A00000000000000000011 /* MedEditAIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedEditAIApp.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000012 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000013 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000014 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000015 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000016 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000017 /* SampleData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleData.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000018 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = SOURCE_ROOT; };
+		2A1A00000000000000000020 /* MedEditAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = MedEditAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2A1A00000000000000000021 /* DomainModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000022 /* ColumnMappingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnMappingEngine.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000023 /* ClassificationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassificationEngine.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000024 /* ArticleProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleProcessing.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000025 /* PubMedParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PubMedParser.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000026 /* TemplateRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateRenderer.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F001 /* CSVEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVEngine.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F002 /* ZipArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipArchiver.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F003 /* XLSXWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSXWriter.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F004 /* XLSXReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XLSXReader.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F005 /* PPTXTemplateFiller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPTXTemplateFiller.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F006 /* PubMedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PubMedService.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F007 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F008 /* EnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrichmentService.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F009 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000F010 /* DocumentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentService.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000027 /* CoreServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreServicesTests.swift; sourceTree = "<group>"; };
+		2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFunctionalTests.swift; sourceTree = "<group>"; };
+		2A1A00000000000000000028 /* MedEditAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = MedEditAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		2A1A00000000000000000030 = {isa = PBXGroup; children = (
+			2A1A00000000000000000031 /* MedEditAI */,
+			2A1A00000000000000000032 /* Products */,
+		); sourceTree = "<group>"; };
+		2A1A00000000000000000031 /* MedEditAI */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000033 /* Sources */,
+			2A1A00000000000000000034 /* Resources */,
+			2A1A00000000000000000035 /* Tests */,
+		); path = MedEditAI; sourceTree = "<group>"; };
+		2A1A00000000000000000033 /* Sources */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000011 /* MedEditAIApp.swift */,
+			2A1A00000000000000000012 /* AppViewModel.swift */,
+			2A1A00000000000000000013 /* AppTheme.swift */,
+			2A1A00000000000000000014 /* Components.swift */,
+			2A1A00000000000000000015 /* Models.swift */,
+			2A1A00000000000000000016 /* RootView.swift */,
+			2A1A00000000000000000017 /* SampleData.swift */,
+			2A1A00000000000000000018 /* Views.swift */,
+			2A1A00000000000000000036 /* Core */,
+		); path = Sources/MedEditAIApp; sourceTree = SOURCE_ROOT; };
+		2A1A00000000000000000034 /* Resources */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000019 /* Info.plist */,
+		); path = Resources; sourceTree = SOURCE_ROOT; };
+		2A1A00000000000000000035 /* Tests */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000037 /* MedEditAITests */,
+		); path = Tests; sourceTree = SOURCE_ROOT; };
+		2A1A00000000000000000036 /* Core */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000021 /* DomainModels.swift */,
+			2A1A00000000000000000022 /* ColumnMappingEngine.swift */,
+			2A1A00000000000000000023 /* ClassificationEngine.swift */,
+			2A1A00000000000000000024 /* ArticleProcessing.swift */,
+			2A1A00000000000000000025 /* PubMedParser.swift */,
+			2A1A00000000000000000026 /* TemplateRenderer.swift */,
+			2A1B0000000000000000F001 /* CSVEngine.swift */,
+			2A1B0000000000000000F002 /* ZipArchiver.swift */,
+			2A1B0000000000000000F003 /* XLSXWriter.swift */,
+			2A1B0000000000000000F004 /* XLSXReader.swift */,
+			2A1B0000000000000000F005 /* PPTXTemplateFiller.swift */,
+			2A1B0000000000000000F006 /* PubMedService.swift */,
+			2A1B0000000000000000F007 /* LLMService.swift */,
+			2A1B0000000000000000F008 /* EnrichmentService.swift */,
+			2A1B0000000000000000F009 /* Persistence.swift */,
+			2A1B0000000000000000F010 /* DocumentService.swift */,
+		); path = Core; sourceTree = "<group>"; };
+		2A1A00000000000000000037 /* MedEditAITests */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000027 /* CoreServicesTests.swift */,
+			2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */,
+		); path = MedEditAITests; sourceTree = SOURCE_ROOT; };
+		2A1A00000000000000000032 /* Products */ = {isa = PBXGroup; children = (
+			2A1A00000000000000000020 /* MedEditAI.app */,
+			2A1A00000000000000000028 /* MedEditAITests.xctest */,
+		); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2A1A00000000000000000040 /* MedEditAI */ = {isa = PBXNativeTarget; buildConfigurationList = 2A1A00000000000000000060 /* Build configuration list for PBXNativeTarget \"MedEditAI\" */; buildPhases = (
+			2A1A00000000000000000041 /* Sources */,
+			2A1A00000000000000000042 /* Resources */,
+		); buildRules = (
+		); dependencies = (
+		); name = MedEditAI; productName = MedEditAI; productReference = 2A1A00000000000000000020 /* MedEditAI.app */; productType = "com.apple.product-type.application"; };
+		2A1A00000000000000000043 /* MedEditAITests */ = {isa = PBXNativeTarget; buildConfigurationList = 2A1A00000000000000000063 /* Build configuration list for PBXNativeTarget \"MedEditAITests\" */; buildPhases = (
+			2A1A00000000000000000044 /* Sources */,
+		); buildRules = (
+		); dependencies = (
+			2A1A00000000000000000045 /* PBXTargetDependency */,
+		); name = MedEditAITests; productName = MedEditAITests; productReference = 2A1A00000000000000000028 /* MedEditAITests.xctest */; productType = "com.apple.product-type.bundle.unit-test"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2A1A00000000000000000050 /* Project object */ = {isa = PBXProject; attributes = { LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { 2A1A00000000000000000040 = { CreatedOnToolsVersion = 16.0; }; 2A1A00000000000000000043 = { CreatedOnToolsVersion = 16.0; TestTargetID = 2A1A00000000000000000040; }; }; }; buildConfigurationList = 2A1A00000000000000000070 /* Build configuration list for PBXProject \"MedEditAI\" */; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; hasScannedForEncodings = 0; mainGroup = 2A1A00000000000000000030; productRefGroup = 2A1A00000000000000000032; projectDirPath = ""; projectRoot = ""; targets = ( 2A1A00000000000000000040, 2A1A00000000000000000043, ); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2A1A00000000000000000042 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
+		); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2A1A00000000000000000045 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 2A1A00000000000000000040 /* MedEditAI */; targetProxy = 2A1A00000000000000000046 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		2A1A00000000000000000046 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 2A1A00000000000000000050 /* Project object */; proxyType = 1; remoteGlobalIDString = 2A1A00000000000000000040; remoteInfo = MedEditAI; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2A1A00000000000000000044 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			2A1A0000000000000000000F /* CoreServicesTests.swift in Sources */,
+			2A1B0000000000000000BA01 /* CoreFunctionalTests.swift in Sources */,
+		); runOnlyForDeploymentPostprocessing = 0; };
+		2A1A00000000000000000041 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			2A1A00000000000000000001 /* MedEditAIApp.swift in Sources */,
+			2A1A00000000000000000002 /* AppViewModel.swift in Sources */,
+			2A1A00000000000000000003 /* AppTheme.swift in Sources */,
+			2A1A00000000000000000004 /* Components.swift in Sources */,
+			2A1A00000000000000000005 /* Models.swift in Sources */,
+			2A1A00000000000000000006 /* RootView.swift in Sources */,
+			2A1A00000000000000000007 /* SampleData.swift in Sources */,
+			2A1A00000000000000000008 /* Views.swift in Sources */,
+			2A1A00000000000000000009 /* DomainModels.swift in Sources */,
+			2A1A0000000000000000000A /* ColumnMappingEngine.swift in Sources */,
+			2A1A0000000000000000000B /* ClassificationEngine.swift in Sources */,
+			2A1A0000000000000000000C /* ArticleProcessing.swift in Sources */,
+			2A1A0000000000000000000D /* PubMedParser.swift in Sources */,
+			2A1A0000000000000000000E /* TemplateRenderer.swift in Sources */,
+			2A1B0000000000000000B001 /* CSVEngine.swift in Sources */,
+			2A1B0000000000000000B002 /* ZipArchiver.swift in Sources */,
+			2A1B0000000000000000B003 /* XLSXWriter.swift in Sources */,
+			2A1B0000000000000000B004 /* XLSXReader.swift in Sources */,
+			2A1B0000000000000000B005 /* PPTXTemplateFiller.swift in Sources */,
+			2A1B0000000000000000B006 /* PubMedService.swift in Sources */,
+			2A1B0000000000000000B007 /* LLMService.swift in Sources */,
+			2A1B0000000000000000B008 /* EnrichmentService.swift in Sources */,
+			2A1B0000000000000000B009 /* Persistence.swift in Sources */,
+			2A1B0000000000000000B010 /* DocumentService.swift in Sources */,
+		); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2A1A00000000000000000061 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = "";
+			ENABLE_PREVIEWS = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			INFOPLIST_KEY_NSHumanReadableCopyright = "";
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAI;
+			PRODUCT_NAME = MedEditAI;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		}; name = Debug; };
+		2A1A00000000000000000062 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = "";
+			ENABLE_PREVIEWS = NO;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			INFOPLIST_KEY_NSHumanReadableCopyright = "";
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAI;
+			PRODUCT_NAME = MedEditAI;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		}; name = Release; };
+		2A1A00000000000000000071 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			ENABLE_PREVIEWS = YES;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAI;
+			PRODUCT_NAME = MedEditAI;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_VERSION = 5.0;
+		}; name = Debug; };
+		2A1A00000000000000000072 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			ENABLE_PREVIEWS = NO;
+			GENERATE_INFOPLIST_FILE = NO;
+			INFOPLIST_FILE = Resources/Info.plist;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MARKETING_VERSION = 1.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAI;
+			PRODUCT_NAME = MedEditAI;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_VERSION = 5.0;
+		}; name = Release; };
+		2A1A00000000000000000073 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			ENABLE_TESTING_SEARCH_PATHS = YES;
+			GENERATE_INFOPLIST_FILE = YES;
+			INFOPLIST_KEY_BUNDLE_LOADER = "$(TEST_HOST)";
+			INFOPLIST_KEY_CFBundleDisplayName = MedEditAITests;
+			INFOPLIST_KEY_CFBundleExecutable = "$(EXECUTABLE_NAME)";
+			INFOPLIST_KEY_CFBundleIdentifier = com.wangshenghu.MedEditAITests;
+			INFOPLIST_KEY_CFBundlePackageType = BNDL;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAITests;
+			PRODUCT_NAME = MedEditAITests;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_VERSION = 5.0;
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MedEditAI.app/$(EXECUTABLE_FOLDER_PATH)/MedEditAI";
+		}; name = Debug; };
+		2A1A00000000000000000074 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			CLANG_ENABLE_OBJC_ARC = YES;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			ENABLE_TESTING_SEARCH_PATHS = YES;
+			GENERATE_INFOPLIST_FILE = YES;
+			INFOPLIST_KEY_BUNDLE_LOADER = "$(TEST_HOST)";
+			INFOPLIST_KEY_CFBundleDisplayName = MedEditAITests;
+			INFOPLIST_KEY_CFBundleExecutable = "$(EXECUTABLE_NAME)";
+			INFOPLIST_KEY_CFBundleIdentifier = com.wangshenghu.MedEditAITests;
+			INFOPLIST_KEY_CFBundlePackageType = BNDL;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.wangshenghu.MedEditAITests;
+			PRODUCT_NAME = MedEditAITests;
+			SDKROOT = macosx;
+			SUPPORTED_PLATFORMS = macosx;
+			SWIFT_VERSION = 5.0;
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MedEditAI.app/$(EXECUTABLE_FOLDER_PATH)/MedEditAI";
+		}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2A1A00000000000000000060 /* Build configuration list for PBXNativeTarget "MedEditAI" */ = {isa = XCConfigurationList; buildConfigurations = (
+			2A1A00000000000000000061 /* Debug */,
+			2A1A00000000000000000062 /* Release */,
+		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		2A1A00000000000000000070 /* Build configuration list for PBXProject "MedEditAI" */ = {isa = XCConfigurationList; buildConfigurations = (
+			2A1A00000000000000000071 /* Debug */,
+			2A1A00000000000000000072 /* Release */,
+		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		2A1A00000000000000000063 /* Build configuration list for PBXNativeTarget "MedEditAITests" */ = {isa = XCConfigurationList; buildConfigurations = (
+			2A1A00000000000000000073 /* Debug */,
+			2A1A00000000000000000074 /* Release */,
+		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 2A1A00000000000000000050 /* Project object */;
+}
