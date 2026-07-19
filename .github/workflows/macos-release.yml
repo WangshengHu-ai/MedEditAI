@@ -1,0 +1,66 @@
+name: Build & Package macOS App
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-archive:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Show Environment Info
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          security find-identity -v -p codesigning || true
+
+      - name: Set up Xcode Target Configuration
+        run: |
+          # Ensure resolving and fetching SwiftPM dependencies
+          xcodebuild -resolvePackageDependencies -project MedEditAI.xcodeproj -scheme MedEditAI
+
+      - name: Build and Archive
+        run: |
+          # Build a release archive for macOS using ad-hoc / local code signing
+          xcodebuild archive \
+            -project MedEditAI.xcodeproj \
+            -scheme MedEditAI \
+            -configuration Release \
+            -archivePath build/MedEditAI.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package App as ZIP
+        run: |
+          # Navigate into the built archive and copy the standalone .app bundle
+          mkdir -p dist
+          cp -R build/MedEditAI.xcarchive/Products/Applications/MedEditAI.app dist/
+          
+          # Create a compressed zip archive of the app
+          cd dist
+          zip -r -y -q ../MedEditAI-macOS.zip MedEditAI.app
+          cd ..
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MedEditAI-macOS-Installer
+          path: MedEditAI-macOS.zip
+          if-no-files-found: error
+          retention-days: 7
