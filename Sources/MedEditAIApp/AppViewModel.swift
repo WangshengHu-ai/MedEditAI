@@ -64,6 +64,16 @@ final class AppViewModel: ObservableObject {
         self.selectedArticleID = articles.first?.id
     }
 
+    /// 应用启动工厂：UI 测试传入 `-uitest-reset` 时使用一次性临时存储，保证每次启动干净、隔离。
+    static func makeForLaunch() -> AppViewModel {
+        if ProcessInfo.processInfo.arguments.contains("-uitest-reset") {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("uitest-\(UUID().uuidString).json")
+            return AppViewModel(store: LibraryStore(fileURL: url))
+        }
+        return AppViewModel()
+    }
+
     // MARK: - Active project data (single source of truth)
     private var activeProjectIndex: Int? {
         storedProjects.firstIndex(where: { $0.id == selectedProjectID })

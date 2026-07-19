@@ -16,6 +16,7 @@ struct PageHeader<Actions: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 24, weight: .bold))
+                    .accessibilityIdentifier("page-title")
                 Text(subtitle)
                     .font(.system(size: 13))
                     .foregroundStyle(AppTheme.textSecondary)

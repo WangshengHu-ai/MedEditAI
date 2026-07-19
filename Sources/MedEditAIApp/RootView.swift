@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 struct RootView: View {
-    @StateObject private var viewModel = AppViewModel()
+    @StateObject private var viewModel = AppViewModel.makeForLaunch()
 
     var body: some View {
         ZStack(alignment: .bottom) {

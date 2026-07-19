@@ -13,6 +13,7 @@ struct SidebarView: View {
                 ForEach(AppSection.allCases.filter { $0 != .settings }) { section in
                     Label(section.title, systemImage: section.systemImage)
                         .tag(section)
+                        .accessibilityIdentifier("nav-\(section.rawValue)")
                 }
             }
 
@@ -59,6 +60,7 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("新建项目")
+                    .accessibilityIdentifier("btn-add-project")
                 }
             }
         }
@@ -66,6 +68,7 @@ struct SidebarView: View {
         .navigationTitle("MedEditAI")
         .alert("新建项目", isPresented: $showingAddProject) {
             TextField("项目名称", text: $newProjectName)
+                .accessibilityIdentifier("field-new-project")
             Button("创建") { viewModel.addProject(name: newProjectName) }
             Button("取消", role: .cancel) {}
         }
@@ -109,14 +112,17 @@ struct DashboardView: View {
                     HStack(spacing: 10) {
                         if viewModel.hasData {
                             Button("清空数据") { viewModel.clearAll() }
+                                .accessibilityIdentifier("btn-clear-data")
                         } else {
                             Button("载入示例数据") { viewModel.loadSampleData() }
+                                .accessibilityIdentifier("btn-load-sample")
                         }
                         Button("开始检索") {
                             viewModel.navigate(to: .search)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
+                        .accessibilityIdentifier("btn-start-search")
                     }
                 }
 
@@ -192,6 +198,7 @@ struct SearchView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
                         .disabled(viewModel.isBusy || viewModel.searchTerms.isEmpty)
+                        .accessibilityIdentifier("btn-run-search")
                     }
                 }
 
@@ -200,6 +207,7 @@ struct SearchView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                     TextField("输入检索词（多个词用 AND 连接）", text: $viewModel.searchText)
                         .textFieldStyle(.plain)
+                        .accessibilityIdentifier("field-search")
                     Button("检索") {
                         Task { await viewModel.runSearch() }
                     }
