@@ -17,10 +17,19 @@ struct TopicClassificationResult: Codable, Hashable {
     let confidence: Double
 }
 
+/// AI 推断的研究类型结果。`studyType` 为空字符串表示 AI 也无法判断，不得编造。
+struct StudyTypeClassificationResult: Codable, Hashable {
+    let studyType: String
+    let confidence: Double
+}
+
 /// 可插拔 LLM 能力协议。云端与本地 Provider 都实现它。
 protocol LLMProviding {
     func translate(_ request: TranslationRequest) async throws -> TranslationResult
     func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult
+    /// 研究类型（study design）AI 推断：优先从 `candidateTerms`（用户自定义词条）中选择；
+    /// 若未提供候选或无法判断，则自行推断或返回空字符串。
+    func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult
 }
 
 enum LLMError: Error, LocalizedError {
@@ -119,6 +128,27 @@ struct OpenAICompatibleLLM: LLMProviding {
         let content = try await complete(system: templates.classificationSystem, prompt: prompt)
         guard let data = extractJSON(content)?.data(using: .utf8),
               let result = try? JSONDecoder().decode(TopicClassificationResult.self, from: data) else {
+            throw LLMError.badResponse(content)
+        }
+        return result
+    }
+
+    /// 研究类型 AI 推断。使用固定 Prompt（不开放自定义，避免引入 `PromptTemplates` 新必填字段带来的持久化/解码风险）。
+    func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult {
+        guard !apiKey.isEmpty else { throw LLMError.notConfigured }
+        let candidateText = candidateTerms.isEmpty
+            ? "（用户未指定，请基于常见医学研究类型自行判断，如：随机对照试验/队列研究/病例对照研究/横断面研究/系统评价·Meta 分析/病例报告/病例系列/动物实验/社论等）"
+            : candidateTerms.joined(separator: " | ")
+        let prompt = """
+        仅基于给定标题和摘要判断研究类型（study design）。若提供了候选词条，优先从候选中选择最匹配的一项；确实无法判断时，将 studyType 输出为空字符串，不得编造。
+        以 JSON 输出：{"studyType":"","confidence":0.0}
+        候选：\(candidateText)
+        标题：\(title)
+        摘要：\(abstract)
+        """
+        let content = try await complete(system: "You are a precise medical editing assistant. Never fabricate.", prompt: prompt)
+        guard let data = extractJSON(content)?.data(using: .utf8),
+              let result = try? JSONDecoder().decode(StudyTypeClassificationResult.self, from: data) else {
             throw LLMError.badResponse(content)
         }
         return result

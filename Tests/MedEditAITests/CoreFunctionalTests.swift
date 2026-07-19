@@ -92,11 +92,16 @@ final class CoreFunctionalTests: XCTestCase {
 
     // MARK: - LLM Mock provider
     struct MockLLM: LLMProviding {
+        var studyTypeResult: StudyTypeClassificationResult = StudyTypeClassificationResult(studyType: "队列研究", confidence: 0.82)
+
         func translate(_ request: TranslationRequest) async throws -> TranslationResult {
             TranslationResult(titleCN: "脉冲电场消融", abstractCN: "摘要测试", keywordsCN: ["消融"])
         }
         func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
             TopicClassificationResult(topicPath: "Science > 原理 > electroporation", confidence: 0.85)
+        }
+        func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult {
+            studyTypeResult
         }
     }
 
@@ -146,6 +151,47 @@ final class CoreFunctionalTests: XCTestCase {
         XCTAssertEqual(drafts[0].impactFactor, "5.8")
         XCTAssertEqual(drafts[0].url, "https://doi.org/10.1/x")
         XCTAssertFalse(drafts[0].titleCN.isEmpty)
+        // 本地自定义词条未命中（文本不含“土豆模型”），回退到 AI 推断结果。
+        XCTAssertEqual(drafts[0].studyType, "队列研究")
+        XCTAssertEqual(drafts[0].evidence, "AI 推断")
+    }
+
+    func testEnrichmentPrefersLocalCustomTermOverAI() async {
+        let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [])
+        let service = EnrichmentService(
+            llm: MockLLM(studyTypeResult: StudyTypeClassificationResult(studyType: "不相干结果", confidence: 0.9)),
+            topicScheme: scheme,
+            customStudyTerms: ["electroporation"],
+            impactFactorByJournal: [:]
+        )
+        let record = PubMedRecord(
+            pmid: "2", title: "Electroporation review", abstract: "electroporation ablation",
+            authors: ["A"], journal: "Heart Rhythm", pubDate: "2026",
+            doi: nil, keywords: [], meshTerms: [], references: []
+        )
+        let drafts = await service.enrichBatch(records: [record])
+        // 本地自定义词条命中优先于 AI，不应使用 Mock 返回的不相干结果。
+        XCTAssertEqual(drafts[0].studyType, "electroporation")
+        XCTAssertEqual(drafts[0].evidence, "自定义")
+    }
+
+    func testEnrichmentLeavesStudyTypeBlankWhenAICannotDetermine() async {
+        let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [])
+        let service = EnrichmentService(
+            llm: MockLLM(studyTypeResult: StudyTypeClassificationResult(studyType: "", confidence: 0.4)),
+            topicScheme: scheme,
+            customStudyTerms: [],
+            impactFactorByJournal: [:]
+        )
+        let record = PubMedRecord(
+            pmid: "3", title: "Unclear design report", abstract: "ambiguous text",
+            authors: ["A"], journal: "Heart Rhythm", pubDate: "2026",
+            doi: nil, keywords: [], meshTerms: [], references: []
+        )
+        let drafts = await service.enrichBatch(records: [record])
+        // 未配置自定义词条且 AI 也无法判断时，留空而非编造。
+        XCTAssertEqual(drafts[0].studyType, "")
+        XCTAssertEqual(drafts[0].evidence, "")
     }
 
     // MARK: - DocumentService import/export

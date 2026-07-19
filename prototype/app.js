@@ -818,7 +818,7 @@ function renderSettings() {
               <div class="setting-main">
                 <div>
                   <div class="setting-name">PPT 模板</div>
-                  <div class="setting-desc">onepage.pptx，自动识别 11 个占位符</div>
+                  <div class="setting-desc">onepage.pptx，自动识别 11 个占位符（需用户上传自备 .pptx，不提供内置默认模板）</div>
                 </div>
               </div>
               <button class="btn btn-sm">替换模板</button>
@@ -848,7 +848,7 @@ function renderSettings() {
               <div class="setting-main">
                 <div>
                   <div class="setting-name">主题分类体系</div>
-                  <div class="setting-desc">四级菜单 + 呈现方式 + 文献备注</div>
+                  <div class="setting-desc">四级菜单 + 呈现方式 + 文献备注（导入 Excel 时可指定列名对应层级，也可手动新增词条）</div>
                 </div>
               </div>
               <button class="btn btn-sm">导入 Excel</button>
@@ -857,7 +857,7 @@ function renderSettings() {
               <div class="setting-main">
                 <div>
                   <div class="setting-name">研究类型体系</div>
-                  <div class="setting-desc">综述 / 社论 / 动物实验 / 土豆模型</div>
+                  <div class="setting-desc">综述 / 社论 / 动物实验 / 土豆模型（可自行增删；未配置时 AI 根据标题/摘要自动推断，无法判断则留空）</div>
                 </div>
               </div>
               <button class="btn btn-sm">维护词表</button>

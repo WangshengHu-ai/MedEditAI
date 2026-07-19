@@ -687,7 +687,7 @@ struct SettingsView: View {
                         Divider()
                         SettingsActionRow(
                             title: "PPT 模板",
-                            subtitle: viewModel.pptTemplateURL?.lastPathComponent ?? "未选择 onepage.pptx",
+                            subtitle: viewModel.pptTemplateURL?.lastPathComponent ?? "未选择：不提供内置模板，需上传您自备的 .pptx（导出时会再次提示选择）",
                             button: "选择"
                         ) { viewModel.chooseTemplate() }
                     }
@@ -700,7 +700,10 @@ struct SettingsView: View {
                         Divider()
                         SettingsActionRow(title: "导出 onepage PPT", subtitle: "使用客户自备 .pptx 模板填充", button: "导出") { viewModel.exportPPTX() }
                         Divider()
-                        SettingInlineRow(title: "研究类型体系", subtitle: viewModel.customStudyTerms.joined(separator: " / "), trailing: "自定义")
+                        SettingInlineRow(title: "研究类型体系", subtitle: viewModel.customStudyTerms.isEmpty ? "未配置：AI 自动推断" : viewModel.customStudyTerms.joined(separator: " / "), trailing: "自定义")
+                        CustomStudyTermsEditor(viewModel: viewModel)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 12)
                     }
                     .roundedPanel(padding: 0)
                 }
@@ -761,6 +764,7 @@ struct SettingsDetailView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
+                ManualTopicEntryField(viewModel: viewModel)
                 TopicTreePanel(nodes: viewModel.topicTree)
             }
             .padding(20)

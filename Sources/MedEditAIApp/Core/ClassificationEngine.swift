@@ -6,7 +6,6 @@ enum ClassificationEngine {
     }
 
     static func buildTree(from rows: [[String]]) -> ClassificationScheme {
-        var roots: [ClassificationNode] = []
         let filteredRows = rows.filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
         guard filteredRows.count > 1 else {
             return ClassificationScheme(name: "Empty", type: .topic, isHierarchical: true, items: [])
@@ -20,7 +19,45 @@ enum ClassificationEngine {
         let presentationIndex = headers.firstIndex(where: { normalize($0) == normalize("呈现方式") })
         let noteIndex = headers.firstIndex(where: { normalize($0) == normalize("文献备注") })
 
-        for row in filteredRows.dropFirst() {
+        let roots = buildRoots(
+            rows: filteredRows.dropFirst(),
+            topicIndex: topicIndex, secondaryIndex: secondaryIndex,
+            tertiaryIndex: tertiaryIndex, quaternaryIndex: quaternaryIndex,
+            presentationIndex: presentationIndex, noteIndex: noteIndex
+        )
+        return ClassificationScheme(name: "Imported Scheme", type: .topic, isHierarchical: true, items: deduplicate(roots))
+    }
+
+    /// 按用户在导入确认界面指定的列角色（"topic"/"secondary"/"tertiary"/"quaternary"/"presentation"/"note"）构建四级主题树，
+    /// 而非仅依赖固定表头名称自动识别，用于支持“用户导入 Excel 后自行指定列名对应的分类层级”。
+    /// `columnRoles` 为 表头文本 -> 角色 key 的映射；未出现在映射中的列会被忽略。
+    static func buildTree(from rows: [[String]], columnRoles: [String: String]) -> ClassificationScheme {
+        let filteredRows = rows.filter { !$0.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+        guard filteredRows.count > 1 else {
+            return ClassificationScheme(name: "Empty", type: .topic, isHierarchical: true, items: [])
+        }
+        let headers = filteredRows[0]
+        func index(for role: String) -> Int? { headers.firstIndex(where: { columnRoles[$0] == role }) }
+
+        let roots = buildRoots(
+            rows: filteredRows.dropFirst(),
+            topicIndex: index(for: "topic") ?? -1,
+            secondaryIndex: index(for: "secondary") ?? -1,
+            tertiaryIndex: index(for: "tertiary") ?? -1,
+            quaternaryIndex: index(for: "quaternary") ?? -1,
+            presentationIndex: index(for: "presentation"),
+            noteIndex: index(for: "note")
+        )
+        return ClassificationScheme(name: "Imported Scheme", type: .topic, isHierarchical: true, items: deduplicate(roots))
+    }
+
+    private static func buildRoots(
+        rows: ArraySlice<[String]>,
+        topicIndex: Int, secondaryIndex: Int, tertiaryIndex: Int, quaternaryIndex: Int,
+        presentationIndex: Int?, noteIndex: Int?
+    ) -> [ClassificationNode] {
+        var roots: [ClassificationNode] = []
+        for row in rows {
             let topic = value(at: topicIndex, in: row)
             let secondary = value(at: secondaryIndex, in: row)
             let tertiary = value(at: tertiaryIndex, in: row)
@@ -51,8 +88,7 @@ enum ClassificationEngine {
                 )
             )
         }
-
-        return ClassificationScheme(name: "Imported Scheme", type: .topic, isHierarchical: true, items: deduplicate(roots))
+        return roots
     }
 
     static func classifyStudyDesign(in text: String, customTerms: [String] = []) -> StudyDesignResult {
@@ -89,6 +125,18 @@ enum ClassificationEngine {
         }
 
         return StudyDesignResult(design: "综述", evidenceLevel: "默认", confidence: 0.75)
+    }
+
+    /// 仅依据用户自定义研究类型词条做本地关键词匹配（不含内置英文关键词启发式，不给默认“综述”兜底）。
+    /// 用于 AI 加工流程：命中则直接采用（无需联网/调用 AI）；未命中（或未配置自定义词条）返回 nil，交由上层决定是否调用 AI 推断或留空。
+    static func matchCustomStudyTerm(in text: String, customTerms: [String]) -> StudyDesignResult? {
+        let normalized = normalize(text)
+        for custom in customTerms {
+            let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, normalized.contains(normalize(trimmed)) else { continue }
+            return StudyDesignResult(design: trimmed, evidenceLevel: "自定义", confidence: 0.98)
+        }
+        return nil
     }
 
     static func findNode(in scheme: ClassificationScheme, title: String) -> ClassificationNode? {
@@ -129,7 +177,7 @@ enum ClassificationEngine {
     }
 
     private static func value(at index: Int, in row: [String]) -> String {
-        guard index < row.count else { return "" }
+        guard index >= 0, index < row.count else { return "" }
         return row[index].trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

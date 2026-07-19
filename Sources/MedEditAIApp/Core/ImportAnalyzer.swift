@@ -87,13 +87,34 @@ enum ImportAnalyzer {
         canonicalFields.first(where: { $0.id == field })?.label ?? field
     }
 
+    /// 分类字典列角色目录（下拉选项），用于「导入分类字典」确认界面让用户指定每列对应的层级。
+    static let classificationFieldOptions: [CanonicalField] = [
+        .init(id: "", label: "忽略此列"),
+        .init(id: "topic", label: "主题（一级）"),
+        .init(id: "secondary", label: "次级菜单（二级）"),
+        .init(id: "tertiary", label: "三级菜单（三级）"),
+        .init(id: "quaternary", label: "四级菜单（叶子词条）"),
+        .init(id: "presentation", label: "呈现方式"),
+        .init(id: "note", label: "文献备注")
+    ]
+
     static func analyze(rows: [[String]]) -> ImportAnalysis {
         if let headerIndex = classificationHeaderIndex(in: rows) {
-            let scheme = ClassificationEngine.buildTree(from: Array(rows[headerIndex...]))
+            let headers = rows[headerIndex]
+            let sampleRow = firstDataRow(in: rows, after: headerIndex)
+            let proposals = headers.enumerated().map { index, header -> ColumnProposal in
+                ColumnProposal(
+                    sourceHeader: header,
+                    field: defaultClassificationRole(for: header),
+                    sample: index < sampleRow.count ? sampleRow[index] : ""
+                )
+            }
+            let scheme = classificationScheme(rows: rows, headerIndex: headerIndex, proposals: proposals)
             return ImportAnalysis(
                 kind: .classification,
                 rows: rows,
                 headerIndex: headerIndex,
+                proposals: proposals,
                 classificationPathCount: ClassificationEngine.flattenPaths(in: scheme).count
             )
         }
@@ -122,6 +143,31 @@ enum ImportAnalyzer {
             mapping[proposal.sourceHeader] = proposal.field
         }
         return DocumentService.articles(fromRows: analysis.rows, headerIndex: analysis.headerIndex, mapping: mapping)
+    }
+
+    /// 按（用户调整后的）列角色建议构建分类字典树。
+    static func classificationScheme(from analysis: ImportAnalysis, proposals: [ColumnProposal]) -> ClassificationScheme {
+        classificationScheme(rows: analysis.rows, headerIndex: analysis.headerIndex, proposals: proposals)
+    }
+
+    private static func classificationScheme(rows: [[String]], headerIndex: Int, proposals: [ColumnProposal]) -> ClassificationScheme {
+        var mapping: [String: String] = [:]
+        for proposal in proposals where !proposal.field.isEmpty {
+            mapping[proposal.sourceHeader] = proposal.field
+        }
+        return ClassificationEngine.buildTree(from: Array(rows[headerIndex...]), columnRoles: mapping)
+    }
+
+    /// 根据列名猜测默认分类层级角色，供用户在确认界面进一步调整。
+    private static func defaultClassificationRole(for header: String) -> String {
+        let normalized = header.replacingOccurrences(of: " ", with: "")
+        if normalized.contains("四级") { return "quaternary" }
+        if normalized.contains("三级") { return "tertiary" }
+        if normalized.contains("次级") { return "secondary" }
+        if normalized.contains("呈现") { return "presentation" }
+        if normalized.contains("备注") { return "note" }
+        if normalized.contains("主题") { return "topic" }
+        return ""
     }
 
     // MARK: - Detection

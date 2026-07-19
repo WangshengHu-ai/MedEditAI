@@ -688,6 +688,84 @@ struct MappingPanel: View {
     }
 }
 
+/// 手动新增一条主题分类路径（无需导入 Excel），格式：主题>次级>三级>四级，也支持只输入单个词条。
+struct ManualTopicEntryField: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var text: String = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("手动新增分类，如：主题>次级>三级>四级", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12.5))
+                .onSubmit(add)
+                .accessibilityIdentifier("field-add-topic-path")
+            Button("添加") { add() }
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("btn-add-topic-path")
+        }
+    }
+
+    private func add() {
+        guard viewModel.addManualTopicPath(text) else { return }
+        text = ""
+    }
+}
+
+/// 研究类型自定义词条编辑器：展示已配置词条并支持移除，同时支持手动新增。
+/// 未配置词条时，AI 加工会根据标题/摘要自动推断研究类型，仍无法判断则留空。
+struct CustomStudyTermsEditor: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var newTerm: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.customStudyTerms.isEmpty {
+                Text("未配置自定义词条：AI 加工时将根据标题/摘要自动推断研究类型，无法判断则留空。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(viewModel.customStudyTerms, id: \.self) { term in
+                        HStack(spacing: 6) {
+                            Text(term)
+                                .font(.system(size: 12.5))
+                            Spacer()
+                            Button {
+                                viewModel.removeCustomStudyTerm(term)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppTheme.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("btn-remove-study-term-\(term)")
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(AppTheme.panelSecondary))
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("新增研究类型词条，如：土豆模型", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12.5))
+                    .onSubmit(add)
+                    .accessibilityIdentifier("field-add-study-term")
+                Button("添加") { add() }
+                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("btn-add-study-term")
+            }
+        }
+    }
+
+    private func add() {
+        viewModel.addCustomStudyTerm(newTerm)
+        newTerm = ""
+    }
+}
+
 struct TopicTreePanel: View {
     let nodes: [TopicNode]
     var selectedTitle: String? = nil
@@ -959,7 +1037,7 @@ struct ImportMappingSheet: View {
             Text(analysis.kind == .classification ? "确认分类字典导入" : "确认导入字段映射")
                 .font(.system(size: 17, weight: .bold))
             Text(analysis.kind == .classification
-                 ? "已识别为四级主题分类字典，将构建 \(analysis.classificationPathCount) 条主题路径。"
+                 ? "已识别为分类字典结构，可按需调整每列对应的分类层级后再导入（当前将构建 \(currentClassificationPathCount) 条主题路径）。"
                  : "已分析文件结构并给出字段映射建议，请确认或调整后导入（约 \(analysis.articleCountEstimate) 篇）。")
                 .font(.system(size: 12.5))
                 .foregroundStyle(AppTheme.textSecondary)
@@ -1014,19 +1092,60 @@ struct ImportMappingSheet: View {
     }
 
     private var classificationContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("四级主题分类字典", systemImage: "list.bullet.indent")
-                .font(.system(size: 14, weight: .semibold))
-            Text("列结构：主题 / 次级菜单 / 三级菜单 / 四级菜单（+ 呈现方式 / 备注）")
-                .font(.system(size: 12.5))
-                .foregroundStyle(AppTheme.textSecondary)
-            Text("将构建 \(analysis.classificationPathCount) 条主题路径并应用到当前项目的分类体系。")
-                .font(.system(size: 12.5))
-                .foregroundStyle(AppTheme.textSecondary)
-            Spacer()
+        ScrollView {
+            VStack(spacing: 0) {
+                Text("支持用户导入 Excel 后自行指定每列名称对应的分类层级（无需固定表头文字）。")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 10)
+
+                HStack {
+                    Text("源列 / 示例值")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("对应分类层级")
+                        .frame(width: 200, alignment: .leading)
+                }
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+
+                ForEach($proposals) { $proposal in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(proposal.sourceHeader.isEmpty ? "（空列名）" : proposal.sourceHeader)
+                                .font(.system(size: 13, weight: .semibold))
+                            if !proposal.sample.isEmpty {
+                                Text(proposal.sample)
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Picker("", selection: $proposal.field) {
+                            ForEach(viewModel.classificationFieldOptions) { option in
+                                Text(option.label).tag(option.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 200)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    Divider().padding(.leading, 20)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
+    }
+
+    /// 依据当前（可能已被用户调整）的列角色映射，实时计算将构建的主题路径数，供界面提示。
+    private var currentClassificationPathCount: Int {
+        ClassificationEngine.flattenPaths(in: ImportAnalyzer.classificationScheme(from: analysis, proposals: proposals)).count
     }
 
     private var footer: some View {
@@ -1036,7 +1155,7 @@ struct ImportMappingSheet: View {
             Spacer()
             Button("确认导入") {
                 if analysis.kind == .classification {
-                    viewModel.confirmClassificationImport()
+                    viewModel.confirmClassificationImport(proposals: proposals)
                 } else {
                     viewModel.confirmArticleImport(proposals: proposals)
                 }

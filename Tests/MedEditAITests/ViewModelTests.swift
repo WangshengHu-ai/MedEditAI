@@ -579,6 +579,64 @@ final class ViewModelTests: XCTestCase {
         XCTAssertFalse(vm.topicTree.isEmpty)
     }
 
+    func testConfirmClassificationImportAppliesUserAdjustedColumnMapping() {
+        let vm = makeViewModel()
+        // 列名不是固定的“主题/次级菜单/…”，用户需要在确认界面手动指定每列对应的分类层级。
+        let rows = [
+            ["自定义列1", "自定义列2", "自定义列3", "自定义列4"],
+            ["Science of PFA", "原理", "史", "叶子A"],
+            ["Science of PFA", "原理", "史", "叶子B"]
+        ]
+        let analysis = ImportAnalyzer.analyze(rows: rows)
+        XCTAssertEqual(analysis.kind, .unknown)   // 未识别固定列名，走通用导入分析
+        vm.pendingImport = ImportAnalysis(kind: .classification, rows: rows, headerIndex: 0, proposals: [
+            ColumnProposal(sourceHeader: "自定义列1", field: "topic", sample: "Science of PFA"),
+            ColumnProposal(sourceHeader: "自定义列2", field: "secondary", sample: "原理"),
+            ColumnProposal(sourceHeader: "自定义列3", field: "tertiary", sample: "史"),
+            ColumnProposal(sourceHeader: "自定义列4", field: "quaternary", sample: "叶子A")
+        ])
+        vm.confirmClassificationImport(proposals: vm.pendingImport!.proposals)
+        XCTAssertNil(vm.pendingImport)
+        XCTAssertEqual(vm.topicTree.isEmpty, false)
+        XCTAssertNotNil(ClassificationEngine.findNode(in: AppViewModel.scheme(from: vm.topicTree), title: "叶子A"))
+    }
+
+    func testCustomStudyTermsPersistAcrossReload() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("study-terms-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertTrue(vm1.customStudyTerms.isEmpty)
+        vm1.addCustomStudyTerm("土豆模型")
+        XCTAssertEqual(vm1.customStudyTerms, ["土豆模型"])
+        vm1.addCustomStudyTerm("土豆模型")   // 去重
+        XCTAssertEqual(vm1.customStudyTerms.count, 1)
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertEqual(vm2.customStudyTerms, ["土豆模型"])   // 重启后仍生效（此前存在但从未回读的持久化缺口）
+
+        vm2.removeCustomStudyTerm("土豆模型")
+        XCTAssertTrue(vm2.customStudyTerms.isEmpty)
+    }
+
+    func testAddManualTopicPathBuildsNestedNodesAndPersists() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("manual-topic-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertTrue(vm1.addManualTopicPath("主题X>次级Y>三级Z>叶子W"))
+        XCTAssertFalse(vm1.topicTree.isEmpty)
+        let scheme = AppViewModel.scheme(from: vm1.topicTree)
+        XCTAssertNotNil(ClassificationEngine.findNode(in: scheme, title: "叶子W"))
+
+        // 单个词条也支持。
+        XCTAssertTrue(vm1.addManualTopicPath("独立词条"))
+        XCTAssertNotNil(ClassificationEngine.findNode(in: AppViewModel.scheme(from: vm1.topicTree), title: "独立词条"))
+
+        XCTAssertFalse(vm1.addManualTopicPath("   "))   // 空输入拒绝
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertNotNil(ClassificationEngine.findNode(in: AppViewModel.scheme(from: vm2.topicTree), title: "叶子W"))   // 重启后仍生效
+    }
+
     func testCancelImportClearsPending() {
         let vm = makeViewModel()
         vm.pendingImport = ImportAnalyzer.analyze(rows: [["标题"], ["T1"]])

@@ -21,7 +21,7 @@ final class EnrichmentService {
 
     func enrich(record: PubMedRecord) async -> ArticleDraft {
         let rawText = [record.title, record.abstract, record.keywords.joined(separator: " "), record.meshTerms.joined(separator: " ")].joined(separator: " ")
-        let study = ClassificationEngine.classifyStudyDesign(in: rawText, customTerms: customStudyTerms)
+        let study = await resolveStudyType(rawText: rawText, title: record.title, abstract: record.abstract)
 
         var titleCN = ""
         var abstractCN = ""
@@ -73,6 +73,20 @@ final class EnrichmentService {
 
     private func leaf(of path: String) -> String {
         path.split(separator: ">").last.map { String($0).trimmingCharacters(in: .whitespaces) } ?? path
+    }
+
+    /// 研究类型判定顺序：① 命中用户自定义词条（本地关键词匹配，无需联网）；
+    /// ② 未命中则调用 AI 基于标题/摘要推断（优先参考自定义词条作为候选，允许自由推断）；
+    /// ③ AI 也无法判断时留空，交由人工在复核时补充，不编造。
+    private func resolveStudyType(rawText: String, title: String, abstract: String) async -> StudyDesignResult {
+        if let local = ClassificationEngine.matchCustomStudyTerm(in: rawText, customTerms: customStudyTerms) {
+            return local
+        }
+        if let ai = try? await llm.classifyStudyType(title: title, abstract: abstract, candidateTerms: customStudyTerms),
+           !ai.studyType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return StudyDesignResult(design: ai.studyType, evidenceLevel: "AI 推断", confidence: ai.confidence)
+        }
+        return StudyDesignResult(design: "", evidenceLevel: "", confidence: 0.5)
     }
 
     private func makeCitation(from record: PubMedRecord) -> String {

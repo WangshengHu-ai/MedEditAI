@@ -19,6 +19,7 @@ struct LibrarySnapshot: Codable {
     var customStudyTerms: [String]
     var impactFactorByJournal: [String: String]
     var promptTemplates: PromptTemplates?
+    var topicScheme: ClassificationScheme?
 
     static let empty = LibrarySnapshot(projects: [], customStudyTerms: [], impactFactorByJournal: [:], promptTemplates: nil)
 
@@ -26,12 +27,14 @@ struct LibrarySnapshot: Codable {
         projects: [StoredProject],
         customStudyTerms: [String],
         impactFactorByJournal: [String: String],
-        promptTemplates: PromptTemplates? = nil
+        promptTemplates: PromptTemplates? = nil,
+        topicScheme: ClassificationScheme? = nil
     ) {
         self.projects = projects
         self.customStudyTerms = customStudyTerms
         self.impactFactorByJournal = impactFactorByJournal
         self.promptTemplates = promptTemplates
+        self.topicScheme = topicScheme
     }
 }
 

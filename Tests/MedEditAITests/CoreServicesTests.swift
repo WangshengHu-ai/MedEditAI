@@ -36,6 +36,31 @@ final class CoreServicesTests: XCTestCase {
         XCTAssertEqual(rct.evidenceLevel, "高")
     }
 
+    func testMatchCustomStudyTermReturnsNilWithoutMatchOrTerms() {
+        XCTAssertNil(ClassificationEngine.matchCustomStudyTerm(in: "randomized controlled trial", customTerms: []))
+        XCTAssertNil(ClassificationEngine.matchCustomStudyTerm(in: "randomized controlled trial", customTerms: ["土豆模型"]))
+    }
+
+    func testMatchCustomStudyTermMatchesWithHighConfidenceAndNoEnglishFallback() {
+        // 不同于 classifyStudyDesign，matchCustomStudyTerm 未命中自定义词条时不应回退到英文关键词启发式或默认“综述”。
+        let result = ClassificationEngine.matchCustomStudyTerm(in: "This is a 土豆模型 animal study", customTerms: ["土豆模型"])
+        XCTAssertEqual(result?.design, "土豆模型")
+        XCTAssertEqual(result?.evidenceLevel, "自定义")
+        XCTAssertGreaterThan(result?.confidence ?? 0, 0.9)
+    }
+
+    func testBuildTreeWithColumnRolesUsesUserSpecifiedMapping() {
+        let rows = [
+            ["列A", "列B", "列C", "列D"],
+            ["Science of PFA", "原理", "史", "叶子A"],
+            ["Science of PFA", "原理", "史", "叶子B"]
+        ]
+        let roles = ["列A": "topic", "列B": "secondary", "列C": "tertiary", "列D": "quaternary"]
+        let scheme = ClassificationEngine.buildTree(from: rows, columnRoles: roles)
+        XCTAssertEqual(ClassificationEngine.flattenPaths(in: scheme).count, 2)
+        XCTAssertNotNil(ClassificationEngine.findNode(in: scheme, title: "叶子A"))
+    }
+
     func testPubMedQueryBuilderProducesExpectedClause() {
         let query = PubMedQueryBuilder.buildQuery(keywords: ["pulsed field ablation"], requiredTerms: ["atrial fibrillation"], yearRange: 2024...2026)
         XCTAssertTrue(query.contains("\"pulsed field ablation\"[Title/Abstract]"))

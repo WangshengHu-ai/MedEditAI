@@ -38,11 +38,13 @@ final class AppViewModel: ObservableObject {
     // MARK: - Import mapping confirmation
     @Published var pendingImport: ImportAnalysis?
     let canonicalFieldOptions = ImportAnalyzer.canonicalFields
+    let classificationFieldOptions = ImportAnalyzer.classificationFieldOptions
 
     // MARK: - Topic filter (classification tree)
     @Published var selectedTopic: String?
 
-    let customStudyTerms = ["综述", "社论", "动物实验"]
+    /// 用户自定义研究类型词条；为空时 AI 加工会根据标题/摘要自动推断，仍无法判断则留空。
+    @Published var customStudyTerms: [String] = []
 
     // MARK: - Static config (navigation & previews, not result data)
     let quickActions = SampleData.quickActions
@@ -61,6 +63,8 @@ final class AppViewModel: ObservableObject {
         let snapshot = store.load()
         self.impactFactorByJournal = snapshot.impactFactorByJournal
         self.promptTemplates = snapshot.promptTemplates ?? .default
+        self.customStudyTerms = snapshot.customStudyTerms
+        self.topicTreeNodes = snapshot.topicScheme.map(Self.nodes(from:)) ?? []
         if snapshot.projects.isEmpty {
             let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [])
             self.storedProjects = [defaultProject]
@@ -540,11 +544,15 @@ final class AppViewModel: ObservableObject {
         replaceDrafts(recognized, toast: "导入成功：\(recognized.count) 篇（映射已确认）")
     }
 
-    /// 用户确认分类字典导入。
-    func confirmClassificationImport() {
+    /// 用户确认分类字典导入（可携带用户在确认界面中调整后的列角色映射；未传则使用自动识别结果）。
+    func confirmClassificationImport(proposals: [ColumnProposal]? = nil) {
         guard let analysis = pendingImport, analysis.kind == .classification else { return }
-        let count = applyClassification(rows: Array(analysis.rows[analysis.headerIndex...]))
+        let effectiveProposals = proposals ?? analysis.proposals
+        let scheme = ImportAnalyzer.classificationScheme(from: analysis, proposals: effectiveProposals)
+        topicTreeNodes = Self.nodes(from: scheme)
+        let count = ClassificationEngine.flattenPaths(in: scheme).count
         pendingImport = nil
+        persist()
         showToast("已导入分类字典：\(count) 条路径")
     }
 
@@ -587,8 +595,13 @@ final class AppViewModel: ObservableObject {
             } else {
                 rows = CSVEngine.parse(try String(contentsOf: url, encoding: .utf8))
             }
-            let count = applyClassification(rows: rows)
-            showToast("已导入分类字典：\(count) 条路径")
+            let analysis = ImportAnalyzer.analyze(rows: rows)
+            guard analysis.kind == .classification else {
+                showToast("未识别到分类字典结构（需包含“主题/次级菜单/三级菜单/四级菜单”等列）")
+                return
+            }
+            // 分析完成 → 弹出确认界面，用户可调整每列对应的分类层级后再导入
+            pendingImport = analysis
         } catch {
             showToast("分类字典导入失败：\(error.localizedDescription)")
         }
@@ -599,7 +612,48 @@ final class AppViewModel: ObservableObject {
     func applyClassification(rows: [[String]]) -> Int {
         let scheme = ClassificationEngine.buildTree(from: rows)
         topicTreeNodes = Self.nodes(from: scheme)
+        persist()
         return ClassificationEngine.flattenPaths(in: scheme).count
+    }
+
+    /// 手动新增一条主题分类路径，格式：“主题>次级>三级>四级”（也支持仅输入单个词条），无需导入 Excel。
+    @discardableResult
+    func addManualTopicPath(_ path: String) -> Bool {
+        let parts = path.split(separator: ">").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !parts.isEmpty else {
+            showToast("请输入有效的分类路径")
+            return false
+        }
+        var node: ClassificationNode?
+        for (index, title) in parts.enumerated().reversed() {
+            node = ClassificationNode(title: title, level: index + 1, children: node.map { [$0] } ?? [])
+        }
+        guard let newRoot = node else { return false }
+        let scheme = Self.scheme(from: topicTreeNodes)
+        let updated = ClassificationScheme(name: scheme.name, type: scheme.type, isHierarchical: scheme.isHierarchical, items: scheme.items + [newRoot])
+        topicTreeNodes = Self.nodes(from: updated)
+        persist()
+        showToast("已添加主题分类：\(path)")
+        return true
+    }
+
+    /// 新增一条自定义研究类型词条（去重/去空白）。
+    func addCustomStudyTerm(_ term: String) {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !customStudyTerms.contains(trimmed) else {
+            showToast("该词条已存在")
+            return
+        }
+        customStudyTerms.append(trimmed)
+        persist()
+        showToast("已添加研究类型词条：\(trimmed)")
+    }
+
+    /// 移除一条自定义研究类型词条。
+    func removeCustomStudyTerm(_ term: String) {
+        customStudyTerms.removeAll { $0 == term }
+        persist()
     }
 
     func chooseTemplate() {
@@ -696,7 +750,8 @@ final class AppViewModel: ObservableObject {
                 projects: storedProjects,
                 customStudyTerms: customStudyTerms,
                 impactFactorByJournal: impactFactorByJournal,
-                promptTemplates: promptTemplates
+                promptTemplates: promptTemplates,
+                topicScheme: Self.scheme(from: topicTreeNodes)
             )
         )
     }
