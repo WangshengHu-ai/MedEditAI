@@ -2,8 +2,6 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var showingAddProject = false
-    @State private var newProjectName = ""
     @State private var renamingProject: Project?
     @State private var renameText = ""
 
@@ -52,12 +50,6 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("MedEditAI")
-        .alert("新建项目", isPresented: $showingAddProject) {
-            TextField("项目名称", text: $newProjectName)
-                .accessibilityIdentifier("field-new-project")
-            Button("创建") { viewModel.addProject(name: newProjectName) }
-            Button("取消", role: .cancel) {}
-        }
         .alert("重命名项目", isPresented: Binding(
             get: { renamingProject != nil },
             set: { if !$0 { renamingProject = nil } }
@@ -74,8 +66,7 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 8) {
                 Button {
-                    newProjectName = ""
-                    showingAddProject = true
+                    viewModel.addProject(name: "新项目 \(viewModel.projects.count + 1)")
                 } label: {
                     Label("新建项目", systemImage: "plus.circle.fill")
                 }

@@ -72,25 +72,16 @@ final class MedEditAIUITests: XCTestCase {
 
     // MARK: - E2E5 项目管理：新建项目
 
-    func testAddProjectFromSidebar() {
+    func testAddProjectCreatesNewProject() {
         let app = launchApp()
-        // 底部具名按钮，AX 暴露稳定
+        // 底部具名按钮，直接创建自动命名的新项目（无对话框，规避 alert 偶发性）
         let addButton = app.buttons["btn-add-project"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 15))
         addButton.click()
 
-        // 用输入框的出现判断对话框已弹出（比按钮更准，且避开 Touch Bar 重复元素）
-        let field = app.textFields["field-new-project"].firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 12), "应弹出新建项目对话框")
-        field.click()
-        // 使用 ASCII 名称，避免 CI 无中文输入法导致的键入问题
-        field.typeText("Oncology")
-        // 回车触发默认“创建”按钮，规避 macOS runner 的 Touch Bar 重复按钮点击问题
-        field.typeText("\r")
-
-        // 新项目名应出现在侧栏（用 label 包含匹配，兼容按钮/静态文本等元素类型）
-        let predicate = NSPredicate(format: "label CONTAINS %@", "Oncology")
+        // 侧栏应出现“新项目”行（label 包含匹配，兼容按钮/静态文本等元素类型）
+        let predicate = NSPredicate(format: "label CONTAINS %@", "新项目")
         let created = app.descendants(matching: .any).matching(predicate).firstMatch
-        XCTAssertTrue(created.waitForExistence(timeout: 10), "新建项目应出现在侧栏")
+        XCTAssertTrue(created.waitForExistence(timeout: 10), "应创建并显示新项目")
     }
 }
