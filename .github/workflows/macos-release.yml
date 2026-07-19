@@ -46,15 +46,21 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package App as ZIP
+      - name: Package App and Samples as ZIP
         run: |
-          # Navigate into the built archive and copy the standalone .app bundle
+          # Create packaging directory
           mkdir -p dist
+          
+          # Copy the standalone compiled .app bundle
           cp -R build/MedEditAI.xcarchive/Products/Applications/MedEditAI.app dist/
           
-          # Create a compressed zip archive of the app
+          # Also package the real PFA Samples (Excel worklists, category trees, slide templates)
+          # so users have them ready-to-test directly upon downloading the installer bundle.
+          cp -R Samples dist/
+          
+          # Compress everything into the final distribution ZIP package
           cd dist
-          zip -r -y -q ../MedEditAI-macOS.zip MedEditAI.app
+          zip -r -y -q ../MedEditAI-macOS.zip MedEditAI.app Samples
           cd ..
 
       - name: Upload Build Artifacts
