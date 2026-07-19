@@ -10,16 +10,39 @@ final class ViewModelTests: XCTestCase {
 
     // MARK: - Test doubles
 
-    /// 可注入的假 PubMed 数据源，避免真实网络。
+    /// 可注入的假 PubMed 数据源，支持分页/排序断言，避免真实网络。
     private final class MockPubMed: PubMedFetching {
-        let ids: [String]
+        let allIDs: [String]
         let records: [PubMedRecord]
+        var lastSort: PubMedSort?
+        var lastRetstart: Int?
+        var lastRetmax: Int?
+
         init(ids: [String] = [], records: [PubMedRecord] = []) {
-            self.ids = ids
+            self.allIDs = ids
             self.records = records
         }
-        func search(query: String, maxResults: Int) async throws -> [String] { ids }
-        func fetch(pmids: [String]) async throws -> [PubMedRecord] { records }
+
+        func search(query: String, sort: PubMedSort, retstart: Int, retmax: Int) async throws -> PubMedSearchResult {
+            lastSort = sort
+            lastRetstart = retstart
+            lastRetmax = retmax
+            let page = Array(allIDs.dropFirst(retstart).prefix(retmax))
+            return PubMedSearchResult(total: allIDs.count, ids: page)
+        }
+
+        func fetch(pmids: [String]) async throws -> [PubMedRecord] {
+            let matched = records.filter { pmids.contains($0.pmid) }
+            return matched.isEmpty ? records : matched
+        }
+    }
+
+    private func record(pmid: String, title: String = "Study", journal: String = "Heart Rhythm") -> PubMedRecord {
+        PubMedRecord(
+            pmid: pmid, title: title, abstract: "electroporation ablation study",
+            authors: ["Bates AP"], journal: journal, pubDate: "2026",
+            doi: "10.1/\(pmid)", keywords: ["ablation"], meshTerms: [], references: []
+        )
     }
 
     /// 每个 VM 使用独立的临时持久化文件，互不污染，也不写入 Application Support。
@@ -270,5 +293,175 @@ final class ViewModelTests: XCTestCase {
         await vm.runSearch()
         XCTAssertFalse(vm.hasData)
         XCTAssertEqual(vm.toastMessage, "未找到结果")
+    }
+
+    // MARK: - FP18 检索分页与总命中数
+
+    func testSearchReportsTotalHitsAndFirstPage() async {
+        let ids = (1...60).map(String.init)
+        let vm = makeViewModel(pubmed: MockPubMed(ids: ids, records: ids.map { record(pmid: $0) }))
+        await vm.runSearch()
+        XCTAssertEqual(vm.totalHits, 60)
+        XCTAssertEqual(vm.currentPage, 0)
+        XCTAssertEqual(vm.totalPages, 3)          // ceil(60 / 25)
+        XCTAssertEqual(vm.articleCount, 25)
+        XCTAssertTrue(vm.canGoNextPage)
+        XCTAssertFalse(vm.canGoPrevPage)
+    }
+
+    func testSearchPaginationNextAndPrev() async {
+        let ids = (1...60).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        await vm.runSearch()
+        await vm.nextPage()
+        XCTAssertEqual(vm.currentPage, 1)
+        XCTAssertEqual(mock.lastRetstart, 25)
+        XCTAssertEqual(vm.articleCount, 25)
+        XCTAssertTrue(vm.canGoPrevPage)
+        await vm.nextPage()
+        XCTAssertEqual(vm.currentPage, 2)
+        XCTAssertEqual(vm.articleCount, 10)       // 60 - 50
+        XCTAssertFalse(vm.canGoNextPage)
+        await vm.prevPage()
+        XCTAssertEqual(vm.currentPage, 1)
+    }
+
+    func testChangeSortPassesSortAndResetsToFirstPage() async {
+        let ids = (1...60).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        await vm.runSearch()
+        await vm.nextPage()
+        XCTAssertEqual(vm.currentPage, 1)
+        await vm.changeSort(.pubDate)
+        XCTAssertEqual(vm.sortOrder, .pubDate)
+        XCTAssertEqual(mock.lastSort, .pubDate)
+        XCTAssertEqual(vm.currentPage, 0)         // 排序变更回到首页
+    }
+
+    // MARK: - FP19 项目管理与切换
+
+    func testAddProjectSwitchesToNewEmptyProject() {
+        let vm = makeViewModel()
+        vm.loadSampleData()
+        XCTAssertTrue(vm.hasData)
+        let before = vm.projects.count
+        vm.addProject(name: "肿瘤免疫")
+        XCTAssertEqual(vm.projects.count, before + 1)
+        XCTAssertEqual(vm.selectedProject.name, "肿瘤免疫")
+        XCTAssertFalse(vm.hasData)                 // 新项目从空开始
+    }
+
+    func testSwitchingProjectSwitchesData() {
+        let vm = makeViewModel()
+        vm.loadSampleData()                        // 默认项目 A 载入示例
+        let projectA = vm.selectedProject
+        vm.addProject(name: "空项目")               // 切换到空项目 B
+        XCTAssertFalse(vm.hasData)
+        vm.chooseProject(projectA)                 // 切回 A
+        XCTAssertEqual(vm.selectedProject.id, projectA.id)
+        XCTAssertTrue(vm.hasData)
+        XCTAssertEqual(vm.articleCount, SampleData.articles.count)
+    }
+
+    func testRenameProject() {
+        let vm = makeViewModel()
+        vm.renameProject(id: vm.selectedProjectID, to: "心电生理库")
+        XCTAssertEqual(vm.selectedProject.name, "心电生理库")
+    }
+
+    func testDeleteProjectKeepsAtLeastOne() {
+        let vm = makeViewModel()
+        vm.deleteProject(id: vm.selectedProjectID) // 仅一个项目 -> 拒绝删除
+        XCTAssertEqual(vm.projects.count, 1)
+        let newID = vm.addProject(name: "临时")
+        XCTAssertEqual(vm.projects.count, 2)
+        vm.deleteProject(id: newID)
+        XCTAssertEqual(vm.projects.count, 1)
+    }
+
+    func testProjectsPersistAcrossViewModelReload() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mededitai-persist-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        vm1.renameProject(id: vm1.selectedProjectID, to: "PFA 库")
+        vm1.addProject(name: "第二库")
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertEqual(vm2.projects.count, 2)
+        XCTAssertTrue(vm2.projects.contains { $0.name == "PFA 库" })
+        XCTAssertTrue(vm2.projects.contains { $0.name == "第二库" })
+    }
+
+    // MARK: - FP20 待复核手动编辑并保存
+
+    func testSaveArticleEditsUpdatesFieldsAndMarksReviewed() {
+        let vm = makeViewModel()
+        vm.loadSampleData()
+        XCTAssertEqual(vm.pendingReviewCount, 1)   // “土豆模型”一篇低置信度
+        let target = vm.articles.first { $0.confidence == .low }!
+        vm.saveArticleEdits(
+            id: target.id, topic: "人工复核主题", titleCN: "人工中文标题",
+            abstractCN: "人工中文摘要", studyType: "综述", product: "PFA",
+            note: "已人工确认", markReviewed: true
+        )
+        let updated = vm.articles.first { $0.id == target.id }!
+        XCTAssertEqual(updated.topic, "人工复核主题")
+        XCTAssertEqual(updated.titleCN, "人工中文标题")
+        XCTAssertEqual(updated.abstractCN, "人工中文摘要")
+        XCTAssertEqual(updated.note, "已人工确认")
+        XCTAssertEqual(updated.confidence, .high)  // 标记复核后提升置信度
+        XCTAssertEqual(vm.pendingReviewCount, 0)   // 不再待复核
+    }
+
+    // MARK: - FP21 AI 加工仅处理选中并写回卡片
+
+    func testEnrichmentProcessesOnlySelectedArticles() async {
+        let vm = makeViewModel()
+        let rows = [
+            ["标题", "研究类型"],
+            ["Pulsed field ablation outcomes", ""],
+            ["Radiofrequency ablation review", ""]
+        ]
+        vm.replaceDrafts(DocumentService.articles(from: rows))
+        XCTAssertEqual(vm.articleCount, 2)
+
+        let first = vm.articles[0]
+        vm.toggleExportSelection(first)            // 仅选第一篇
+        await vm.runEnrichment()
+
+        let processed = vm.articles.first { $0.id == first.id }!
+        let untouched = vm.articles.first { $0.id != first.id }!
+        XCTAssertFalse(processed.titleCN.isEmpty)  // 第一篇被翻译
+        XCTAssertTrue(untouched.titleCN.isEmpty)   // 第二篇未处理
+    }
+
+    func testEnrichmentProcessesAllWhenNoneSelected() async {
+        let vm = makeViewModel()
+        let rows = [
+            ["标题", "研究类型"],
+            ["Pulsed field ablation outcomes", ""],
+            ["Radiofrequency ablation review", ""]
+        ]
+        vm.replaceDrafts(DocumentService.articles(from: rows))
+        await vm.runEnrichment()
+        XCTAssertTrue(vm.articles.allSatisfy { !$0.titleCN.isEmpty })
+    }
+
+    // MARK: - FP22 导入自动识别文献字段
+
+    func testAutoRecognizeFillsEmptyFields() {
+        let vm = makeViewModel()
+        let draft = ArticleDraft(
+            topic: "", titleEN: "Randomized controlled trial of pulsed field ablation",
+            titleCN: "", abstractEN: "randomized controlled trial", abstractCN: "",
+            citation: "", authors: "A", date: "2026", studyType: "", journal: "Heart Rhythm",
+            impactFactor: nil, quartile: nil, pmid: "9", url: nil, confidence: 1.0,
+            product: "", evidence: "", note: ""
+        )
+        let recognized = vm.autoRecognize(draft: draft)
+        XCTAssertEqual(recognized.studyType, "随机对照试验")   // 识别研究设计
+        XCTAssertEqual(recognized.product, "PFA")            // 识别产品
     }
 }

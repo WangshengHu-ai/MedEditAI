@@ -790,3 +790,101 @@ struct EmptyStateView: View {
         .roundedPanel()
     }
 }
+
+/// 带标签的单行文本编辑字段。
+struct LabeledField: View {
+    let label: String
+    @Binding var text: String
+
+    init(_ label: String, text: Binding<String>) {
+        self.label = label
+        self._text = text
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+            TextField(label, text: $text)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+}
+
+/// 待复核文献的人工编辑与保存表单。用 .id(article.id) 让切换文献时重置编辑缓冲。
+struct ArticleReviewEditor: View {
+    @ObservedObject var viewModel: AppViewModel
+    let article: Article
+
+    @State private var topic: String
+    @State private var titleCN: String
+    @State private var abstractCN: String
+    @State private var studyType: String
+    @State private var product: String
+    @State private var note: String
+
+    init(viewModel: AppViewModel, article: Article) {
+        self.viewModel = viewModel
+        self.article = article
+        _topic = State(initialValue: article.topic)
+        _titleCN = State(initialValue: article.titleCN)
+        _abstractCN = State(initialValue: article.abstractCN)
+        _studyType = State(initialValue: article.studyType)
+        _product = State(initialValue: article.product)
+        _note = State(initialValue: article.note)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("人工复核与编辑")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                Spacer()
+                ConfidenceBadge(level: article.confidence)
+            }
+
+            LabeledField("主题分类", text: $topic)
+            LabeledField("研究类型", text: $studyType)
+            LabeledField("研究产品", text: $product)
+            LabeledField("中文标题", text: $titleCN)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("中文摘要")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                TextEditor(text: $abstractCN)
+                    .font(.system(size: 13))
+                    .frame(height: 96)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+            }
+
+            LabeledField("备注", text: $note)
+
+            HStack(spacing: 10) {
+                Button("保存修改") {
+                    viewModel.saveArticleEdits(
+                        id: article.id, topic: topic, titleCN: titleCN, abstractCN: abstractCN,
+                        studyType: studyType, product: product, note: note, markReviewed: false
+                    )
+                }
+                Spacer()
+                Button("保存并标记已复核") {
+                    viewModel.saveArticleEdits(
+                        id: article.id, topic: topic, titleCN: titleCN, abstractCN: abstractCN,
+                        studyType: studyType, product: product, note: note, markReviewed: true
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.accent)
+            }
+        }
+        .roundedPanel()
+    }
+}

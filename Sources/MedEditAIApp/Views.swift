@@ -2,6 +2,10 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var showingAddProject = false
+    @State private var newProjectName = ""
+    @State private var renamingProject: Project?
+    @State private var renameText = ""
 
     var body: some View {
         List(selection: $viewModel.selectedSection) {
@@ -12,7 +16,7 @@ struct SidebarView: View {
                 }
             }
 
-            Section("项目") {
+            Section {
                 ForEach(viewModel.projects) { project in
                     Button {
                         viewModel.chooseProject(project)
@@ -22,17 +26,62 @@ struct SidebarView: View {
                                 .fill(project.color)
                                 .frame(width: 8, height: 8)
                             Text(project.name)
-                                .foregroundStyle(viewModel.selectedProject.id == project.id ? AppTheme.accent : .primary)
+                                .foregroundStyle(viewModel.selectedProjectID == project.id ? AppTheme.accent : .primary)
                             Spacer()
+                            if viewModel.selectedProjectID == project.id {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(AppTheme.accent)
+                            }
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("重命名") {
+                            renamingProject = project
+                            renameText = project.name
+                        }
+                        Button("删除", role: .destructive) {
+                            viewModel.deleteProject(id: project.id)
+                        }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("项目")
+                    Spacer()
+                    Button {
+                        newProjectName = ""
+                        showingAddProject = true
+                    } label: {
+                        Image(systemName: "plus.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("新建项目")
                 }
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("MedEditAI")
+        .alert("新建项目", isPresented: $showingAddProject) {
+            TextField("项目名称", text: $newProjectName)
+            Button("创建") { viewModel.addProject(name: newProjectName) }
+            Button("取消", role: .cancel) {}
+        }
+        .alert("重命名项目", isPresented: Binding(
+            get: { renamingProject != nil },
+            set: { if !$0 { renamingProject = nil } }
+        )) {
+            TextField("项目名称", text: $renameText)
+            Button("保存") {
+                if let project = renamingProject {
+                    viewModel.renameProject(id: project.id, to: renameText)
+                }
+                renamingProject = nil
+            }
+            Button("取消", role: .cancel) { renamingProject = nil }
+        }
         .safeAreaInset(edge: .bottom) {
             Button {
                 viewModel.navigate(to: .settings)
@@ -169,12 +218,31 @@ struct SearchView: View {
                         .stroke(AppTheme.line)
                 )
 
-                HStack(spacing: 10) {
-                    Text("起始年份")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(AppTheme.textSecondary)
-                    Stepper("\(viewModel.yearFrom)", value: $viewModel.yearFrom, in: 1900...3000)
-                        .frame(width: 140)
+                HStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        Text("起始年份")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Stepper("\(viewModel.yearFrom)", value: $viewModel.yearFrom, in: 1900...3000)
+                            .frame(width: 130)
+                    }
+                    HStack(spacing: 8) {
+                        Text("排序")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Picker("排序", selection: Binding(
+                            get: { viewModel.sortOrder },
+                            set: { newValue in Task { await viewModel.changeSort(newValue) } }
+                        )) {
+                            ForEach(viewModel.sortOptions) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 130)
+                    }
+                    Spacer()
                 }
 
                 FlowLayout(spacing: 8) {
@@ -201,6 +269,29 @@ struct SearchView: View {
                         message: "点击“批量检索入库”从 PubMed 拉取文献，或在文献库导入本地 Excel/CSV。勾选结果可仅导出所选。"
                     )
                 } else {
+                    if viewModel.totalHits > 0 {
+                        HStack(spacing: 12) {
+                            Text(viewModel.resultRangeText)
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                            Spacer()
+                            Button {
+                                Task { await viewModel.prevPage() }
+                            } label: {
+                                Label("上一页", systemImage: "chevron.left")
+                            }
+                            .disabled(!viewModel.canGoPrevPage || viewModel.isBusy)
+                            Text("第 \(viewModel.currentPage + 1) / \(max(viewModel.totalPages, 1)) 页")
+                                .font(.system(size: 12.5, weight: .semibold))
+                            Button {
+                                Task { await viewModel.nextPage() }
+                            } label: {
+                                Label("下一页", systemImage: "chevron.right")
+                            }
+                            .disabled(!viewModel.canGoNextPage || viewModel.isBusy)
+                        }
+                    }
+
                     VStack(spacing: 0) {
                         SearchHeaderRow()
                         ForEach(viewModel.articles) { article in
@@ -277,7 +368,10 @@ struct LibraryListView: View {
 }
 
 struct LibraryDetailView: View {
+    @ObservedObject var viewModel: AppViewModel
     let article: Article
+
+    private var isRealArticle: Bool { article.id != "placeholder" && viewModel.hasData }
 
     var body: some View {
         ScrollView {
@@ -286,6 +380,11 @@ struct LibraryDetailView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
+
+                if isRealArticle {
+                    ArticleReviewEditor(viewModel: viewModel, article: article)
+                        .id(article.id)
+                }
 
                 DetailBlock(title: "标题") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -348,17 +447,14 @@ struct EnrichView: View {
             VStack(alignment: .leading, spacing: 20) {
                 PageHeader(title: "AI 加工", subtitle: "每项任务独立可开关、可重跑、可回滚；低置信度自动进入待复核") {
                     HStack(spacing: 10) {
-                        Button("切换任务") {
-                            if let first = viewModel.tasks.first {
-                                viewModel.toggleTask(first)
-                            }
-                        }
-                        Button("运行批处理") {
+                        Button("清除选择") { viewModel.selectedForExport.removeAll() }
+                            .disabled(viewModel.selectedForExport.isEmpty)
+                        Button(viewModel.selectedForExport.isEmpty ? "加工全部" : "加工所选") {
                             Task { await viewModel.runEnrichment() }
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
-                        .disabled(viewModel.isBusy)
+                        .disabled(viewModel.isBusy || !viewModel.hasData)
                     }
                 }
 
@@ -379,7 +475,7 @@ struct EnrichView: View {
                         SectionTitle(title: "批处理队列")
                         VStack(alignment: .leading, spacing: 16) {
                             Text(viewModel.hasData
-                                 ? "本次将处理 \(viewModel.articleCount) 篇文献，优先输出中文摘要、研究设计、主题分类与 IF 匹配。"
+                                 ? "本次将处理 \(viewModel.enrichmentTargetCount) 篇文献（\(viewModel.selectedForExport.isEmpty ? "全部" : "已选")），优先输出中文摘要、研究设计、主题分类与 IF 匹配。"
                                  : "当前文献库为空，请先在检索中心或文献库导入数据后再运行批处理。")
                                 .font(.system(size: 13.5))
                                 .foregroundStyle(AppTheme.textSecondary)
@@ -565,7 +661,7 @@ struct EnrichDetailView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        LibraryDetailView(article: viewModel.activeArticle)
+        LibraryDetailView(viewModel: viewModel, article: viewModel.activeArticle)
     }
 }
 

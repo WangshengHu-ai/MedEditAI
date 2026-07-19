@@ -95,7 +95,7 @@ enum ArticleProcessor {
         return "\(authorText). \(record.title). \(record.journal). \(record.pubDate).\(doiSuffix)"
     }
 
-    private static func inferTopic(from title: String, scheme: ClassificationScheme) -> String {
+    static func inferTopic(from title: String, scheme: ClassificationScheme) -> String {
         let normalizedTitle = normalize(title)
         for path in ClassificationEngine.flattenPaths(in: scheme) {
             let parts = path.split(separator: ">")

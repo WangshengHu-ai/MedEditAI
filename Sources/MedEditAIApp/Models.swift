@@ -61,9 +61,15 @@ enum ConfidenceLevel: String {
 }
 
 struct Project: Identifiable, Hashable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let color: Color
+
+    init(id: UUID = UUID(), name: String, color: Color) {
+        self.id = id
+        self.name = name
+        self.color = color
+    }
 }
 
 struct StatItem: Identifiable {

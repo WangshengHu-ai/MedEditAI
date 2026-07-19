@@ -64,7 +64,7 @@ private struct DetailShellView: View {
     var body: some View {
         switch viewModel.selectedSection ?? .dashboard {
         case .library:
-            LibraryDetailView(article: viewModel.activeArticle)
+            LibraryDetailView(viewModel: viewModel, article: viewModel.activeArticle)
         case .slides:
             SlidePreviewDetailView(article: viewModel.activeArticle)
         case .dashboard:

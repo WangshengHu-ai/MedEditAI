@@ -7,19 +7,27 @@ import UniformTypeIdentifiers
 final class AppViewModel: ObservableObject {
     // MARK: - Navigation & selection
     @Published var selectedSection: AppSection? = .dashboard
-    @Published var selectedProject: Project = SampleData.projects[0]
     @Published var selectedArticleID: String?
     @Published var selectedSlideIndex: Int = 0
     @Published var searchText: String = "pulsed field ablation AND atrial fibrillation"
     @Published var yearFrom: Int = 2024
+    @Published var sortOrder: PubMedSort = .bestMatch
     @Published var enabledFilters: Set<String> = []
     @Published var tasks: [ProcessingTask] = SampleData.processingTasks
     @Published var progress: Double = 0.0
     @Published var toastMessage: String?
     @Published var isBusy: Bool = false
 
-    // MARK: - Real data (source of truth)
-    @Published private var drafts: [ArticleDraft] = []
+    // MARK: - Search pagination
+    @Published var totalHits: Int = 0
+    @Published var currentPage: Int = 0        // 0-indexed
+    let pageSize = 25
+
+    // MARK: - Projects (source of truth)
+    @Published private var storedProjects: [StoredProject]
+    @Published var selectedProjectID: UUID
+
+    // MARK: - Per-project working state
     @Published var selectedForExport: Set<String> = []
     @Published var topicTreeNodes: [TopicNode] = []
     @Published var impactFactorByJournal: [String: String] = [:]
@@ -33,8 +41,8 @@ final class AppViewModel: ObservableObject {
     let importMappings = SampleData.importMappings
     let exportMappings = SampleData.exportMappings
     let pptMappings = SampleData.pptMappings
-    let projects = SampleData.projects
     let searchFilters = SampleData.searchFilters
+    let sortOptions = PubMedSort.allCases
 
     // MARK: - Services
     private let store: LibraryStore
@@ -45,19 +53,47 @@ final class AppViewModel: ObservableObject {
         self.store = store
         let snapshot = store.load()
         self.impactFactorByJournal = snapshot.impactFactorByJournal
-        // Empty by default: only restore genuinely persisted user data, never seed demo rows.
-        if let seeded = snapshot.projects.first(where: { !$0.articles.isEmpty }) {
-            self.drafts = seeded.articles
+        if snapshot.projects.isEmpty {
+            let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [])
+            self.storedProjects = [defaultProject]
+            self.selectedProjectID = defaultProject.id
         } else {
-            self.drafts = []
+            self.storedProjects = snapshot.projects
+            self.selectedProjectID = snapshot.projects[0].id
         }
         self.selectedArticleID = articles.first?.id
+    }
+
+    // MARK: - Active project data (single source of truth)
+    private var activeProjectIndex: Int? {
+        storedProjects.firstIndex(where: { $0.id == selectedProjectID })
+    }
+
+    private var drafts: [ArticleDraft] {
+        get { activeProjectIndex.map { storedProjects[$0].articles } ?? [] }
+        set {
+            if let index = activeProjectIndex { storedProjects[index].articles = newValue }
+        }
+    }
+
+    var projects: [Project] {
+        storedProjects.map { Project(id: $0.id, name: $0.name, color: Color(hex: $0.colorHex)) }
+    }
+
+    var selectedProject: Project {
+        projects.first(where: { $0.id == selectedProjectID }) ?? projects.first ?? Project(name: "文献库", color: AppTheme.accent)
+    }
+
+    private func draftID(_ draft: ArticleDraft, index: Int) -> String {
+        (draft.pmid?.isEmpty == false) ? draft.pmid! : "row-\(index)"
     }
 
     // MARK: - Data state
     var articleCount: Int { drafts.count }
     var hasData: Bool { !drafts.isEmpty }
     var pptTemplateName: String { pptTemplateURL?.lastPathComponent ?? "未选择模板" }
+    /// AI 加工目标数：有勾选则为勾选数，否则为全部。
+    var enrichmentTargetCount: Int { selectedForExport.isEmpty ? drafts.count : selectedForExport.count }
 
     /// 载入内置示例数据（按需，不再默认污染界面）。
     func loadSampleData() {
@@ -77,8 +113,59 @@ final class AppViewModel: ObservableObject {
         drafts = []
         selectedForExport = []
         selectedArticleID = nil
+        resetSearchPaging()
         persist()
         showToast("已清空文献库")
+    }
+
+    // MARK: - Project management
+    func chooseProject(_ project: Project) {
+        guard project.id != selectedProjectID else { return }
+        selectedProjectID = project.id
+        selectedForExport = []
+        selectedArticleID = articles.first?.id
+        resetSearchPaging()
+        showToast("已切换项目：\(project.name)")
+    }
+
+    @discardableResult
+    func addProject(name: String, colorHex: String = "#0E9F9F") -> UUID {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmed.isEmpty ? "未命名项目" : trimmed
+        let project = StoredProject(name: finalName, colorHex: colorHex, articles: [])
+        storedProjects.append(project)
+        selectedProjectID = project.id
+        selectedForExport = []
+        selectedArticleID = nil
+        resetSearchPaging()
+        persist()
+        showToast("已创建项目：\(finalName)")
+        return project.id
+    }
+
+    func renameProject(id: UUID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = storedProjects.firstIndex(where: { $0.id == id }) else { return }
+        storedProjects[index].name = trimmed
+        persist()
+        showToast("已重命名为：\(trimmed)")
+    }
+
+    func deleteProject(id: UUID) {
+        guard storedProjects.count > 1, let index = storedProjects.firstIndex(where: { $0.id == id }) else {
+            showToast("至少保留一个项目")
+            return
+        }
+        let removedName = storedProjects[index].name
+        storedProjects.remove(at: index)
+        if selectedProjectID == id {
+            selectedProjectID = storedProjects[0].id
+            selectedForExport = []
+            selectedArticleID = articles.first?.id
+            resetSearchPaging()
+        }
+        persist()
+        showToast("已删除项目：\(removedName)")
     }
 
     // MARK: - Derived display
@@ -166,11 +253,6 @@ final class AppViewModel: ObservableObject {
     // MARK: - Navigation actions
     func navigate(to section: AppSection) { selectedSection = section }
 
-    func chooseProject(_ project: Project) {
-        selectedProject = project
-        showToast("已切换项目：\(project.name)")
-    }
-
     func chooseArticle(_ article: Article) { selectedArticleID = article.id }
 
     func chooseSlide(index: Int) {
@@ -190,43 +272,158 @@ final class AppViewModel: ObservableObject {
         if enabledFilters.contains(filter) { enabledFilters.remove(filter) } else { enabledFilters.insert(filter) }
     }
 
-    // MARK: - Real: PubMed search + enrichment
-    func runSearch() async {
-        guard !isBusy else { return }
+    // MARK: - Search pagination state
+    var totalPages: Int {
+        guard totalHits > 0 else { return 0 }
+        return (totalHits + pageSize - 1) / pageSize
+    }
+    var canGoNextPage: Bool { currentPage + 1 < totalPages }
+    var canGoPrevPage: Bool { currentPage > 0 }
+    var resultRangeText: String {
+        guard totalHits > 0, !drafts.isEmpty else { return "" }
+        let start = currentPage * pageSize + 1
+        let end = min(start + drafts.count - 1, totalHits)
+        return "第 \(start)–\(end) 条 / 共 \(totalHits) 条"
+    }
+
+    private func resetSearchPaging() {
+        totalHits = 0
+        currentPage = 0
+    }
+
+    // MARK: - Real: PubMed search (paged) + offline auto-recognition
+    func runSearch() async { await performSearch(page: 0) }
+
+    func nextPage() async {
+        guard canGoNextPage else { return }
+        await performSearch(page: currentPage + 1)
+    }
+
+    func prevPage() async {
+        guard canGoPrevPage else { return }
+        await performSearch(page: currentPage - 1)
+    }
+
+    func changeSort(_ sort: PubMedSort) async {
+        guard sort != sortOrder else { return }
+        sortOrder = sort
+        if !searchTerms.isEmpty { await performSearch(page: 0) }
+    }
+
+    private func performSearch(page: Int) async {
+        guard !isBusy, !searchTerms.isEmpty else { return }
         isBusy = true
         progress = 0
         showToast("正在检索 PubMed…")
         defer { isBusy = false }
         do {
-            let ids = try await pubmed.search(query: displayedQuery, maxResults: 25)
-            guard !ids.isEmpty else { showToast("未找到结果"); return }
-            let records = try await pubmed.fetch(pmids: ids)
-            let enriched = await enrichmentService().enrichBatch(records: records) { [weak self] progress in
-                Task { @MainActor in self?.progress = progress.fraction }
+            let result = try await pubmed.search(query: displayedQuery, sort: sortOrder, retstart: page * pageSize, retmax: pageSize)
+            totalHits = result.total
+            currentPage = page
+            guard !result.ids.isEmpty else {
+                replaceDrafts([])
+                showToast("未找到结果")
+                return
             }
-            drafts = enriched
-            selectedForExport = []
-            selectedArticleID = articles.first?.id
-            persist()
-            showToast("检索完成：入库 \(enriched.count) 篇")
+            let records = try await pubmed.fetch(pmids: result.ids)
+            let recognized = records.map(autoRecognize(record:))
+            replaceDrafts(recognized)
+            showToast("检索完成：第 \(page + 1)/\(max(totalPages, 1)) 页，共 \(totalHits) 条")
         } catch {
             showToast("检索失败：\(error.localizedDescription)")
         }
     }
 
+    /// 离线确定性“自动识别”：入库即填充研究设计/主题/产品/IF（不联网、不翻译）。
+    func autoRecognize(record: PubMedRecord) -> ArticleDraft {
+        let context = ArticleProcessingContext(
+            customStudyTerms: customStudyTerms,
+            topicScheme: Self.scheme(from: topicTreeNodes),
+            impactFactorByJournal: impactFactorByJournal
+        )
+        var draft = ArticleProcessor.enrich(record: record, context: context)
+        if (draft.url ?? "").isEmpty, let doi = record.doi, !doi.isEmpty {
+            draft.url = "https://doi.org/\(doi)"
+        }
+        return draft
+    }
+
+    /// 对已导入的文献补齐可离线识别的字段（仅填空，不覆盖用户已有内容）。
+    func autoRecognize(draft: ArticleDraft) -> ArticleDraft {
+        var updated = draft
+        let raw = [draft.titleEN, draft.abstractEN, draft.titleCN, draft.abstractCN].joined(separator: " ")
+        if updated.studyType.trimmingCharacters(in: .whitespaces).isEmpty {
+            updated.studyType = ClassificationEngine.classifyStudyDesign(in: raw, customTerms: customStudyTerms).design
+        }
+        if updated.product.trimmingCharacters(in: .whitespaces).isEmpty {
+            updated.product = ArticleProcessor.inferProduct(from: raw)
+        }
+        if (updated.impactFactor ?? "").isEmpty {
+            let key = draft.journal.lowercased().replacingOccurrences(of: " ", with: "")
+            updated.impactFactor = impactFactorByJournal[key]
+        }
+        if updated.topic.trimmingCharacters(in: .whitespaces).isEmpty || updated.topic == "未分类" {
+            let inferred = ArticleProcessor.inferTopic(from: draft.titleEN + " " + draft.abstractEN, scheme: Self.scheme(from: topicTreeNodes))
+            if inferred != "未分类" { updated.topic = inferred }
+        }
+        return updated
+    }
+
+    // MARK: - AI 加工：批量处理“选中”的文献（未选则全部），结果就地写回卡片
     func runEnrichment() async {
         guard !isBusy, !drafts.isEmpty else { return }
         isBusy = true
         progress = 0
         defer { isBusy = false }
-        let records = drafts.map(Self.record(from:))
-        let enriched = await enrichmentService().enrichBatch(records: records) { [weak self] progress in
-            Task { @MainActor in self?.progress = progress.fraction }
+
+        let targetIDs = selectedForExport.isEmpty ? Set(articles.map(\.id)) : selectedForExport
+        var working = drafts
+        let total = working.indices.filter { targetIDs.contains(draftID(working[$0], index: $0)) }.count
+        guard total > 0 else { showToast("请选择要加工的文献"); return }
+
+        let service = enrichmentService()
+        var processed = 0
+        for index in working.indices {
+            guard targetIDs.contains(draftID(working[index], index: index)) else { continue }
+            let record = Self.record(from: working[index])
+            let enriched = await service.enrich(record: record)
+            working[index] = Self.merged(original: working[index], enriched: enriched)
+            processed += 1
+            progress = Double(processed) / Double(total)
         }
-        drafts = enriched
-        selectedArticleID = articles.first?.id
+        drafts = working
+        selectedArticleID = articles.first(where: { targetIDs.contains($0.id) })?.id ?? selectedArticleID
         persist()
-        showToast("批处理完成：\(enriched.count) 篇已更新 AI 结果")
+        showToast("批处理完成：\(processed) 篇已更新 AI 结果")
+    }
+
+    // MARK: - 待复核：手动修改并保存
+    func saveArticleEdits(
+        id: String,
+        topic: String,
+        titleCN: String,
+        abstractCN: String,
+        studyType: String,
+        product: String,
+        note: String,
+        markReviewed: Bool
+    ) {
+        var working = drafts
+        for index in working.indices where draftID(working[index], index: index) == id {
+            working[index].topic = topic
+            working[index].titleCN = titleCN
+            working[index].abstractCN = abstractCN
+            working[index].studyType = studyType
+            working[index].product = product
+            working[index].note = note
+            if markReviewed { working[index].confidence = max(working[index].confidence, 0.95) }
+            drafts = working
+            selectedArticleID = id
+            persist()
+            showToast(markReviewed ? "已保存并标记为已复核" : "已保存修改")
+            return
+        }
+        showToast("未找到要保存的文献")
     }
 
     // MARK: - Real: import / export
@@ -235,7 +432,8 @@ final class AppViewModel: ObservableObject {
         do {
             let imported = try DocumentService.importArticles(from: url)
             guard !imported.isEmpty else { showToast("未从文件解析到文献"); return }
-            replaceDrafts(imported, toast: "导入成功：\(imported.count) 篇")
+            let recognized = imported.map(autoRecognize(draft:))
+            replaceDrafts(recognized, toast: "导入成功：\(recognized.count) 篇（已自动识别字段）")
         } catch {
             showToast("导入失败：\(error.localizedDescription)")
         }
@@ -357,7 +555,7 @@ final class AppViewModel: ObservableObject {
     private func persist() {
         try? store.save(
             LibrarySnapshot(
-                projects: [StoredProject(name: selectedProject.name, colorHex: "#0E9F9F", articles: drafts)],
+                projects: storedProjects,
                 customStudyTerms: customStudyTerms,
                 impactFactorByJournal: impactFactorByJournal
             )
@@ -405,6 +603,22 @@ final class AppViewModel: ObservableObject {
             table[key] = article.impactFactor
         }
         return table
+    }
+
+    /// 将 AI 加工结果合并回原始文献（只覆盖有意义的新结果，保留原始元数据）。
+    static func merged(original: ArticleDraft, enriched: ArticleDraft) -> ArticleDraft {
+        var result = original
+        if !enriched.titleCN.isEmpty { result.titleCN = enriched.titleCN }
+        if !enriched.abstractCN.isEmpty { result.abstractCN = enriched.abstractCN }
+        if !enriched.topic.isEmpty, enriched.topic != "未分类" { result.topic = enriched.topic }
+        if !enriched.studyType.isEmpty { result.studyType = enriched.studyType }
+        if !enriched.product.isEmpty, enriched.product != "未识别" { result.product = enriched.product }
+        if let factor = enriched.impactFactor, !factor.isEmpty { result.impactFactor = factor }
+        if !enriched.citation.isEmpty { result.citation = enriched.citation }
+        if !enriched.evidence.isEmpty { result.evidence = enriched.evidence }
+        result.confidence = enriched.confidence
+        result.note = enriched.note
+        return result
     }
 
     static func draft(from article: Article) -> ArticleDraft {
