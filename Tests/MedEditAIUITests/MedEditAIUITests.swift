@@ -79,13 +79,18 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(addButton.waitForExistence(timeout: 15))
         addButton.click()
 
-        let field = element("field-new-project", in: app)
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "应弹出新建项目对话框")
-        field.click()
-        // 使用 ASCII 名称，避免 CI 无中文输入法导致的键入问题
-        field.typeText("Oncology")
+        // 先等“创建”按钮出现，确认对话框已弹出（比直接找输入框更稳）
+        let createButton = app.buttons["创建"].firstMatch
+        XCTAssertTrue(createButton.waitForExistence(timeout: 12), "应弹出新建项目对话框")
 
-        app.buttons["创建"].firstMatch.click()
+        // sheet 内的输入框用 app.textFields 查询（generic descendants 不一定进入 sheet）
+        let field = app.textFields["field-new-project"].firstMatch
+        if field.waitForExistence(timeout: 8) {
+            field.click()
+            // 使用 ASCII 名称，避免 CI 无中文输入法导致的键入问题
+            field.typeText("Oncology")
+        }
+        createButton.click()
 
         // 新项目名应出现在侧栏（用 label 包含匹配，兼容按钮/静态文本等元素类型）
         let predicate = NSPredicate(format: "label CONTAINS %@", "Oncology")
