@@ -252,6 +252,23 @@ struct SearchView: View {
                         .pickerStyle(.menu)
                         .frame(width: 130)
                     }
+                    HStack(spacing: 8) {
+                        Text("每页条数")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Picker("每页条数", selection: Binding(
+                            get: { viewModel.pageSize },
+                            set: { newValue in Task { await viewModel.changePageSize(newValue) } }
+                        )) {
+                            ForEach(viewModel.pageSizeOptions, id: \.self) { size in
+                                Text("\(size) 条/页").tag(size)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 110)
+                        .accessibilityIdentifier("picker-page-size")
+                    }
                     Spacer()
                 }
 

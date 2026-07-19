@@ -63,6 +63,45 @@
 
     <!-- Toast 容器 -->
     <div class="toast-wrap" id="toastWrap"></div>
+
+    <!-- AI Prompt Editor Modal -->
+    <div id="promptDialog" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center;">
+      <div class="card" style="width: 660px; height: 600px; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <div style="padding: 20px; border-bottom: 1px solid var(--line);">
+          <div style="font-size: 17px; font-weight: bold; margin-bottom: 6px;">AI 加工 Prompt 模板</div>
+          <div style="font-size: 12px; color: var(--text-secondary);">占位符：{title} {abstract} {keywords} {candidates}。</div>
+        </div>
+        <div style="padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <div style="font-size: 11px; font-weight: bold; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">翻译 · SYSTEM</div>
+            <textarea class="field-input" style="width: 100%; height: 44px; font-family: monospace; font-size: 12.5px; resize: none;">You are a precise medical editing assistant. Never fabricate.</textarea>
+          </div>
+          <div>
+            <div style="font-size: 11px; font-weight: bold; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">翻译 · USER</div>
+            <textarea class="field-input" style="width: 100%; height: 120px; font-family: monospace; font-size: 12.5px; resize: none;">你是医学翻译助手。仅基于给定文本，将标题、摘要、关键词翻译成简体中文，不得编造。
+以 JSON 输出：{"titleCN":"","abstractCN":"","keywordsCN":[]}
+标题：{title}
+摘要：{abstract}
+关键词：{keywords}</textarea>
+          </div>
+          <div>
+            <div style="font-size: 11px; font-weight: bold; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 4px;">主题分类 · USER</div>
+            <textarea class="field-input" style="width: 100%; height: 120px; font-family: monospace; font-size: 12.5px; resize: none;">从候选主题路径中选择最匹配的一条，仅基于给定文本，未匹配则选择最接近的一条并降低置信度。
+以 JSON 输出：{"topicPath":"","confidence":0.0}
+候选：{candidates}
+标题：{title}
+摘要：{abstract}</textarea>
+          </div>
+        </div>
+        <div style="padding: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+          <button class="btn btn-ghost" onclick="toast('已恢复默认')">恢复默认</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn" onclick="document.getElementById('promptDialog').style.display='none'">取消</button>
+            <button class="btn btn-primary" onclick="toast('已保存 AI Prompt 模板'); document.getElementById('promptDialog').style.display='none'">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>

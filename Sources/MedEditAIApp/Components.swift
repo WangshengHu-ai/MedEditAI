@@ -192,6 +192,7 @@ struct SearchArticleRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
+        .contentShape(Rectangle())
     }
 }
 

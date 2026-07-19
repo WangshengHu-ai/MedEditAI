@@ -334,6 +334,33 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentPage, 0)         // 排序变更回到首页
     }
 
+    // MARK: - FP29 检索结果自定义每页条数
+
+    func testChangePageSizeUpdatesSizeAndRefetchesFirstPage() async {
+        let ids = (1...60).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
+        await vm.runSearch()
+        await vm.nextPage()
+        XCTAssertEqual(vm.currentPage, 1)
+
+        await vm.changePageSize(50)
+        XCTAssertEqual(vm.pageSize, 50)
+        XCTAssertEqual(mock.lastRetmax, 50)
+        XCTAssertEqual(vm.currentPage, 0)          // 每页条数变更回到首页
+        XCTAssertEqual(vm.articleCount, 50)
+        XCTAssertEqual(vm.totalPages, 2)           // ceil(60 / 50)
+    }
+
+    func testChangePageSizeWithoutActiveSearchJustResetsPaging() async {
+        let vm = makeViewModel()
+        await vm.changePageSize(10)
+        XCTAssertEqual(vm.pageSize, 10)
+        XCTAssertEqual(vm.currentPage, 0)
+        XCTAssertEqual(vm.totalHits, 0)
+    }
+
     // MARK: - FP19 项目管理与切换
 
     func testAddProjectSwitchesToNewEmptyProject() {

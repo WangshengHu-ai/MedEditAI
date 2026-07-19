@@ -20,7 +20,8 @@ final class AppViewModel: ObservableObject {
     // MARK: - Search pagination
     @Published var totalHits: Int = 0
     @Published var currentPage: Int = 0        // 0-indexed
-    let pageSize = 25
+    @Published var pageSize: Int = 25
+    let pageSizeOptions: [Int] = [10, 25, 50, 100]
 
     // MARK: - Projects (source of truth)
     @Published private var storedProjects: [StoredProject]
@@ -340,6 +341,13 @@ final class AppViewModel: ObservableObject {
         guard sort != sortOrder else { return }
         sortOrder = sort
         if !searchTerms.isEmpty { await performSearch(page: 0) }
+    }
+
+    func changePageSize(_ size: Int) async {
+        guard size != pageSize, size > 0 else { return }
+        pageSize = size
+        if !searchTerms.isEmpty, totalHits > 0 { await performSearch(page: 0) }
+        else { resetSearchPaging() }
     }
 
     private func performSearch(page: Int) async {

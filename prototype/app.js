@@ -12,6 +12,8 @@ const state = {
   processing: false,
   progress: 0,
   queueTick: 0,
+  pageSize: 25,
+  selectedForExport: new Set(['a1', 'a2', 'a3']),
   tasks: {
     translate: true,
     study: true,
@@ -33,7 +35,6 @@ const data = {
     'PFA 图书馆 2025 年 IF 数据集已导入',
     'onepage PPT 模板已识别 11 个占位符',
   ],
-  filters: ['近 90 天', '房颤', '综述', '高影响因子', '待复核', '已导出'],
   categories: [
     {
       name: 'Science of PFA',
@@ -359,27 +360,55 @@ function renderSearch() {
           <div class="page-sub">透明展示 PubMed query，支持从零开始检索并直接入库</div>
         </div>
         <div class="flex items-center gap-8">
-          <button class="btn">高级检索式构建器</button>
-          <button class="btn btn-primary" data-action="mockDownload">批量下载入库</button>
+          <button class="btn btn-ghost" onclick="qs('.search-query-field').value=''">清空检索词</button>
+          
+          <div style="position: relative; display: inline-block;">
+            <button class="btn btn-primary" onclick="qs('#batchDialog').style.display='block'">批量检索入库</button>
+            <div id="batchDialog" class="card" style="display: none; position: absolute; top: calc(100% + 4px); right: 0; width: 280px; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 8px;">
+              <div style="padding: 8px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--line); margin-bottom: 4px;">即将把检索结果写入当前项目的文献库。</div>
+              <button class="btn btn-ghost" style="width: 100%; justify-content: flex-start; text-align: left; background: none; border-color: transparent;" onclick="toast('批量入库完成'); qs('#batchDialog').style.display='none'">下载所有检索结果（限前100条）</button>
+              <button class="btn btn-ghost" style="width: 100%; justify-content: flex-start; text-align: left; background: none; border-color: transparent;" onclick="toast('已保留提取勾选文献'); qs('#batchDialog').style.display='none'">仅保留勾选结果</button>
+              <button class="btn btn-ghost" style="width: 100%; justify-content: flex-start; text-align: left; background: none; border-color: transparent; color: var(--text-secondary);" onclick="qs('#batchDialog').style.display='none'">取消</button>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="page-body">
         <div class="searchbar">
           ${icon('<path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm10 17-5.2-5.2"/>')}
-          <input value="pulsed field ablation AND atrial fibrillation" />
+          <input class="search-query-field" value="pulsed field ablation AND atrial fibrillation" />
           <button class="btn btn-sm btn-primary">检索</button>
         </div>
-        <div class="filters">
-          ${data.filters.map((f, i) => `<div class="chip ${i < 3 ? 'on' : ''}">${f}</div>`).join('')}
+        
+        <div class="flex items-center gap-16 mt-16">
+          <div class="flex items-center gap-8">
+            <span class="muted" style="font-size:12.5px;">起始年份</span>
+            <input type="number" class="field-input" style="width: 130px; font-size:13px;" value="2024" />
+          </div>
+          <div class="flex items-center gap-8">
+            <span class="muted" style="font-size:12.5px;">排序</span>
+            <select class="field-input" style="width: 130px; font-size:13px;">
+              <option>Best Match</option>
+              <option>Publication Date</option>
+              <option>Recently Added</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-8">
+            <span class="muted" style="font-size:12.5px;">每页条数</span>
+            <select class="field-input" data-action="pageSize" style="width: 110px; font-size:13px;">
+              ${[10, 25, 50, 100].map(n => `<option value="${n}" ${state.pageSize === n ? 'selected' : ''}>${n} 条/页</option>`).join('')}
+            </select>
+          </div>
         </div>
-        <div class="query-str">
+        
+        <div class="query-str mt-16">
           <b>PubMed query:</b> ("pulsed field ablation"[Title/Abstract] OR PFA[Title/Abstract]) AND ("atrial fibrillation"[Title/Abstract] OR AF[Title/Abstract]) AND (2024:3000[pdat])
         </div>
 
         <div class="card mt-24" style="overflow:hidden;">
           <div class="tbl-head" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;">
-            <div><div class="check on"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
+            <div><div class="check ${data.articles.every(a => state.selectedForExport.has(a.id)) ? 'on' : ''}" data-select-all><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
             <div>标题</div>
             <div>作者</div>
             <div>研究类型</div>
@@ -387,8 +416,8 @@ function renderSearch() {
             <div>IF</div>
           </div>
           ${data.articles.map((a, idx) => `
-            <div class="tbl-row" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;">
-              <div><div class="check ${idx < 3 ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
+            <div class="tbl-row" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;" data-select-row="${a.id}">
+              <div><div class="check ${state.selectedForExport.has(a.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
               <div>
                 <div class="t-title">${a.titleEn}</div>
                 <div class="t-sub">${a.titleCn}</div>
@@ -752,11 +781,20 @@ function renderSettings() {
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">LLM 提供方</div>
-                  <div class="setting-desc">OpenAI / Claude / 国产模型 / 本地模型 可插拔</div>
+                  <div class="setting-name">LLM API Key</div>
+                  <div class="setting-desc">必填；用于调用云端 LLM 执行翻译与主题分析（未配置时无法进行 AI 加工）</div>
                 </div>
               </div>
-              <input class="field-input" value="GPT-5.4 / 自持 API Key" />
+              <input class="field-input" placeholder="sk-..." type="password" value="sk-xxxxxx" style="width: 140px;" />
+            </div>
+            <div class="setting-row">
+              <div class="setting-main">
+                <div>
+                  <div class="setting-name">AI 加工 Prompt</div>
+                  <div class="setting-desc">查看并自定义翻译 / 主题分类使用的 Prompt</div>
+                </div>
+              </div>
+              <button class="btn btn-sm" onclick="qs('#promptDialog').style.display='block'">查看/编辑</button>
             </div>
             <div class="setting-row">
               <div class="setting-main">
@@ -898,7 +936,34 @@ function bindView() {
   });
   qsa('[data-action="exportPPT"]').forEach(el => el.onclick = () => toast('已导出 onepage PPT（示意）'));
   qsa('[data-action="exportExcel"]').forEach(el => el.onclick = () => toast('已导出客户 Excel 交付表（示意）'));
-  qsa('[data-action="mockDownload"]').forEach(el => el.onclick = () => toast('已将 23 篇检索结果加入 PFA 图书馆'));
+
+  qsa('[data-select-row]').forEach(el => {
+    el.onclick = () => {
+      const id = el.dataset.selectRow;
+      if (state.selectedForExport.has(id)) state.selectedForExport.delete(id);
+      else state.selectedForExport.add(id);
+      render();
+    };
+  });
+
+  const selectAllEl = qs('[data-select-all]');
+  if (selectAllEl) {
+    selectAllEl.onclick = () => {
+      const allSelected = data.articles.every(a => state.selectedForExport.has(a.id));
+      if (allSelected) state.selectedForExport.clear();
+      else data.articles.forEach(a => state.selectedForExport.add(a.id));
+      render();
+    };
+  }
+
+  const pageSizeEl = qs('[data-action="pageSize"]');
+  if (pageSizeEl) {
+    pageSizeEl.onchange = () => {
+      state.pageSize = Number(pageSizeEl.value);
+      toast(`每页条数已切换为 ${state.pageSize} 条`);
+      render();
+    };
+  }
 
   qs('#themeToggle').onclick = toggleTheme;
 }
