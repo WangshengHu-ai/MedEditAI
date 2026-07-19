@@ -330,6 +330,7 @@ struct LibraryListView: View {
             PageHeader(title: "文献库", subtitle: "三栏工作台：分类树 / 文献列表 / 中英对照详情") {
                 HStack(spacing: 10) {
                     Button("导入 Excel") { viewModel.importDocument() }
+                        .accessibilityIdentifier("btn-import-excel")
                     Button("批量 AI 加工") {
                         viewModel.navigate(to: .enrich)
                     }

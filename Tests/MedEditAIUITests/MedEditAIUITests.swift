@@ -45,24 +45,20 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(loadButton.waitForExistence(timeout: 10), "清空后应回到空状态")
     }
 
-    // MARK: - E2E3 从仪表盘导航到检索中心并输入检索词
+    // MARK: - E2E3 从仪表盘导航到检索中心
 
-    func testNavigateToSearchAndType() {
+    func testNavigateToSearchShowsSearchControls() {
         let app = launchApp()
         let startSearch = app.buttons["btn-start-search"]
         XCTAssertTrue(startSearch.waitForExistence(timeout: 10))
         startSearch.click()
 
-        let title = app.staticTexts["page-title"]
-        XCTAssertTrue(title.waitForExistence(timeout: 10))
-        XCTAssertEqual(title.label, "检索中心")
-
-        let field = app.textFields["field-search"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["btn-run-search"].exists)
+        // 用检索页特有控件判断导航成功，避免依赖标题标签
+        XCTAssertTrue(app.textFields["field-search"].waitForExistence(timeout: 10), "应进入检索中心并显示检索框")
+        XCTAssertTrue(app.buttons["btn-run-search"].waitForExistence(timeout: 5))
     }
 
-    // MARK: - E2E4 侧栏导航（可访问性标识）
+    // MARK: - E2E4 侧栏导航到文献库（可访问性标识）
 
     func testSidebarNavigationToLibrary() {
         let app = launchApp()
@@ -70,9 +66,8 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(navLibrary.waitForExistence(timeout: 10))
         navLibrary.click()
 
-        let title = app.staticTexts["page-title"]
-        XCTAssertTrue(title.waitForExistence(timeout: 10))
-        XCTAssertEqual(title.label, "文献库")
+        // 文献库页特有的“导入 Excel”按钮出现即证明切换成功
+        XCTAssertTrue(app.buttons["btn-import-excel"].waitForExistence(timeout: 10), "应切换到文献库")
     }
 
     // MARK: - E2E5 项目管理：新建项目
@@ -91,7 +86,9 @@ final class MedEditAIUITests: XCTestCase {
 
         app.buttons["创建"].click()
 
-        // 新项目名应出现在侧栏
-        XCTAssertTrue(app.staticTexts["Oncology"].waitForExistence(timeout: 10))
+        // 新项目名应出现在侧栏（用 label 包含匹配，兼容按钮/静态文本等元素类型）
+        let predicate = NSPredicate(format: "label CONTAINS %@", "Oncology")
+        let created = app.descendants(matching: .any).matching(predicate).firstMatch
+        XCTAssertTrue(created.waitForExistence(timeout: 10), "新建项目应出现在侧栏")
     }
 }
