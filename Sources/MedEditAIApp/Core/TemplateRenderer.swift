@@ -28,7 +28,11 @@ enum TemplateRenderer {
             let normalized = placeholder
                 .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
                 .lowercased()
-            if let match = fields.first(where: { $0.lowercased() == normalized || $0.lowercased().contains(normalized) }) {
+                .replacingOccurrences(of: "_", with: "")
+            if let match = fields.first(where: { 
+                let fLow = $0.lowercased().replacingOccurrences(of: "_", with: "")
+                return fLow == normalized || fLow.contains(normalized) || normalized.contains(fLow)
+            }) {
                 mapping[placeholder] = match
             }
         }
