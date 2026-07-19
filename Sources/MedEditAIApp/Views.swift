@@ -627,6 +627,7 @@ struct SlidesView: View {
 
 struct SettingsView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var showingPromptEditor = false
 
     var body: some View {
         ScrollView {
@@ -644,10 +645,16 @@ struct SettingsView: View {
                     VStack(spacing: 0) {
                         SettingsSecureRow(
                             title: "LLM API Key",
-                            subtitle: "留空则使用离线本地模型；填入后调用云端 LLM",
+                            subtitle: "留空则使用离线本地识别（规则匹配 + 术语词典，非大模型）；填入后调用云端 LLM",
                             placeholder: "sk-...",
                             text: $viewModel.apiKey
                         )
+                        Divider()
+                        SettingsActionRow(
+                            title: "AI 加工 Prompt",
+                            subtitle: "查看并自定义翻译 / 主题分类使用的 Prompt（仅云端 LLM 生效）",
+                            button: "查看 / 编辑"
+                        ) { showingPromptEditor = true }
                         Divider()
                         SettingInlineRow(title: "NCBI API Key", subtitle: "提升 PubMed 检索速率，遵守限流规则", trailing: "可选")
                         Divider()
@@ -687,6 +694,9 @@ struct SettingsView: View {
                 }
             }
             .padding(24)
+        }
+        .sheet(isPresented: $showingPromptEditor) {
+            PromptEditorSheet(viewModel: viewModel)
         }
     }
 }

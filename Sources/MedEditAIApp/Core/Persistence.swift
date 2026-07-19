@@ -18,8 +18,21 @@ struct LibrarySnapshot: Codable {
     var projects: [StoredProject]
     var customStudyTerms: [String]
     var impactFactorByJournal: [String: String]
+    var promptTemplates: PromptTemplates?
 
-    static let empty = LibrarySnapshot(projects: [], customStudyTerms: [], impactFactorByJournal: [:])
+    static let empty = LibrarySnapshot(projects: [], customStudyTerms: [], impactFactorByJournal: [:], promptTemplates: nil)
+
+    init(
+        projects: [StoredProject],
+        customStudyTerms: [String],
+        impactFactorByJournal: [String: String],
+        promptTemplates: PromptTemplates? = nil
+    ) {
+        self.projects = projects
+        self.customStudyTerms = customStudyTerms
+        self.impactFactorByJournal = impactFactorByJournal
+        self.promptTemplates = promptTemplates
+    }
 }
 
 /// 真实本地持久化：将文献库以 JSON 写入 Application Support，离线可用、可备份。

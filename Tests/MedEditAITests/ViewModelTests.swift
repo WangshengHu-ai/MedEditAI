@@ -650,4 +650,107 @@ final class ViewModelTests: XCTestCase {
         let result = await service.enrich(record: record)
         XCTAssertFalse(result.titleCN.isEmpty)   // 离线兜底保证译文非空
     }
+
+    // MARK: - FP28 AI 加工 Prompt 可查看 / 自定义
+
+    func testDefaultPromptTemplatesContainPlaceholders() {
+        let t = PromptTemplates.default
+        XCTAssertTrue(t.translationUser.contains("{title}"))
+        XCTAssertTrue(t.translationUser.contains("{abstract}"))
+        XCTAssertTrue(t.translationUser.contains("{keywords}"))
+        XCTAssertTrue(t.classificationUser.contains("{candidates}"))
+        XCTAssertTrue(t.classificationUser.contains("{title}"))
+        XCTAssertTrue(t.classificationUser.contains("{abstract}"))
+    }
+
+    func testTranslationPromptSubstitutesPlaceholders() {
+        var t = PromptTemplates.default
+        t.translationUser = "T={title} A={abstract} K={keywords}"
+        let prompt = t.translationPrompt(title: "PFA 研究", abstract: "摘要", keywords: ["ablation", "PFA"])
+        XCTAssertEqual(prompt, "T=PFA 研究 A=摘要 K=ablation; PFA")
+        XCTAssertFalse(prompt.contains("{title}"))   // 占位符已全部替换
+    }
+
+    func testClassificationPromptSubstitutesPlaceholders() {
+        var t = PromptTemplates.default
+        t.classificationUser = "C={candidates} T={title} A={abstract}"
+        let prompt = t.classificationPrompt(title: "标题", abstract: "摘要", candidates: ["A>B", "C>D"])
+        XCTAssertEqual(prompt, "C=A>B | C>D T=标题 A=摘要")
+    }
+
+    func testCustomTemplatesFlowIntoCloudLLMPrompt() async throws {
+        // 用自定义模板构造云端 Provider，用 Mock 拦截请求体，验证 Prompt 真正被替换后发出。
+        var templates = PromptTemplates.default
+        templates.translationUser = "翻译这段：{title}"
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PromptCapturingProtocol.self]
+        let session = URLSession(configuration: config)
+        let llm = OpenAICompatibleLLM(
+            apiKey: "sk-test",
+            endpoint: URL(string: "https://example.com/v1/chat/completions")!,
+            session: session,
+            templates: templates
+        )
+        _ = try await llm.translate(
+            TranslationRequest(title: "PFA 研究", abstract: "摘要", keywords: [])
+        )
+        let sentBody = PromptCapturingProtocol.lastBody ?? ""
+        XCTAssertTrue(sentBody.contains("翻译这段：PFA 研究"))   // 自定义模板已生效
+    }
+
+    func testSavePromptTemplatesPersistsAcrossReload() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompt-persist-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        var custom = PromptTemplates.default
+        custom.translationUser = "自定义翻译 {title}"
+        vm1.savePromptTemplates(custom)
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertEqual(vm2.promptTemplates.translationUser, "自定义翻译 {title}")
+    }
+
+    func testResetPromptTemplatesRestoresDefault() {
+        let vm = makeViewModel()
+        var custom = PromptTemplates.default
+        custom.translationSystem = "changed"
+        vm.savePromptTemplates(custom)
+        XCTAssertEqual(vm.promptTemplates.translationSystem, "changed")
+        vm.resetPromptTemplates()
+        XCTAssertEqual(vm.promptTemplates, PromptTemplates.default)
+    }
+}
+
+/// 拦截 URLSession 请求体，供 Prompt 替换测试断言实际发出的内容。
+final class PromptCapturingProtocol: URLProtocol {
+    static var lastBody: String?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if let stream = request.httpBodyStream {
+            stream.open()
+            var data = Data()
+            let bufferSize = 4096
+            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+            defer { buffer.deallocate() }
+            while stream.hasBytesAvailable {
+                let read = stream.read(buffer, maxLength: bufferSize)
+                if read <= 0 { break }
+                data.append(buffer, count: read)
+            }
+            stream.close()
+            PromptCapturingProtocol.lastBody = String(decoding: data, as: UTF8.self)
+        } else if let body = request.httpBody {
+            PromptCapturingProtocol.lastBody = String(decoding: body, as: UTF8.self)
+        }
+        let json = "{\"choices\":[{\"message\":{\"content\":\"{\\\"titleCN\\\":\\\"中\\\",\\\"abstractCN\\\":\\\"\\\",\\\"keywordsCN\\\":[]}\"}}]}"
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: json.data(using: .utf8)!)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

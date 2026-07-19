@@ -1047,3 +1047,73 @@ struct ImportMappingSheet: View {
         .padding(20)
     }
 }
+
+/// 查看并自定义 AI 加工使用的 Prompt 模板（仅云端 LLM 生效）。
+struct PromptEditorSheet: View {
+    @ObservedObject var viewModel: AppViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var templates: PromptTemplates
+
+    init(viewModel: AppViewModel) {
+        self.viewModel = viewModel
+        _templates = State(initialValue: viewModel.promptTemplates)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("AI 加工 Prompt 模板")
+                    .font(.system(size: 17, weight: .bold))
+                Text("占位符：{title} {abstract} {keywords} {candidates}。仅在配置了 API Key、使用云端 LLM 时生效；未配置 Key 时为离线规则识别，不使用 Prompt。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    promptField("翻译 · System", text: $templates.translationSystem, height: 44)
+                    promptField("翻译 · User", text: $templates.translationUser, height: 150)
+                    promptField("主题分类 · System", text: $templates.classificationSystem, height: 44)
+                    promptField("主题分类 · User", text: $templates.classificationUser, height: 150)
+                }
+                .padding(20)
+            }
+
+            Divider()
+
+            HStack {
+                Button("恢复默认") { templates = .default }
+                Spacer()
+                Button("取消") { dismiss() }
+                Button("保存") {
+                    viewModel.savePromptTemplates(templates)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.accent)
+            }
+            .padding(20)
+        }
+        .frame(width: 660, height: 640)
+    }
+
+    private func promptField(_ label: String, text: Binding<String>, height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+            TextEditor(text: text)
+                .font(.system(size: 12.5, design: .monospaced))
+                .frame(height: height)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+        }
+    }
+}

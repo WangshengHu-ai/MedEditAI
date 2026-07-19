@@ -33,6 +33,7 @@ final class AppViewModel: ObservableObject {
     @Published var impactFactorByJournal: [String: String] = [:]
     @Published var apiKey: String = ""
     @Published var pptTemplateURL: URL?
+    @Published var promptTemplates: PromptTemplates = .default
 
     // MARK: - Import mapping confirmation
     @Published var pendingImport: ImportAnalysis?
@@ -60,6 +61,7 @@ final class AppViewModel: ObservableObject {
         self.store = store
         let snapshot = store.load()
         self.impactFactorByJournal = snapshot.impactFactorByJournal
+        self.promptTemplates = snapshot.promptTemplates ?? .default
         if snapshot.projects.isEmpty {
             let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [])
             self.storedProjects = [defaultProject]
@@ -561,6 +563,19 @@ final class AppViewModel: ObservableObject {
         showToast("已选择 PPT 模板：\(url.lastPathComponent)")
     }
 
+    // MARK: - AI Prompt 模板（查看/自定义）
+    func savePromptTemplates(_ templates: PromptTemplates) {
+        promptTemplates = templates
+        persist()
+        showToast("已保存 AI Prompt 模板")
+    }
+
+    func resetPromptTemplates() {
+        promptTemplates = .default
+        persist()
+        showToast("已恢复默认 Prompt")
+    }
+
     func exportExcel() {
         guard !drafts.isEmpty else { showToast("暂无可导出的文献"); return }
         guard let url = savePanel(suggestedName: "MedEditAI-交付.xlsx") else { return }
@@ -599,7 +614,7 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Helpers
     private func enrichmentService() -> EnrichmentService {
-        let provider: LLMProviding = apiKey.isEmpty ? LocalDeterministicLLM() : OpenAICompatibleLLM(apiKey: apiKey)
+        let provider: LLMProviding = apiKey.isEmpty ? LocalDeterministicLLM() : OpenAICompatibleLLM(apiKey: apiKey, templates: promptTemplates)
         return EnrichmentService(
             llm: provider,
             topicScheme: Self.scheme(from: topicTreeNodes),
@@ -622,7 +637,8 @@ final class AppViewModel: ObservableObject {
             LibrarySnapshot(
                 projects: storedProjects,
                 customStudyTerms: customStudyTerms,
-                impactFactorByJournal: impactFactorByJournal
+                impactFactorByJournal: impactFactorByJournal,
+                promptTemplates: promptTemplates
             )
         )
     }

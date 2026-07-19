@@ -61,30 +61,74 @@ struct LocalDeterministicLLM: LLMProviding {
     }
 }
 
+/// 可查看/自定义的 AI 加工 Prompt 模板。占位符：{title} {abstract} {keywords} {candidates}。
+/// 仅在使用云端 LLM（OpenAICompatibleLLM）时生效；离线本地识别为规则匹配，不使用 Prompt。
+struct PromptTemplates: Codable, Hashable {
+    var translationSystem: String
+    var translationUser: String
+    var classificationSystem: String
+    var classificationUser: String
+
+    static let `default` = PromptTemplates(
+        translationSystem: "You are a precise medical editing assistant. Never fabricate.",
+        translationUser: """
+        你是医学翻译助手。仅基于给定文本，将标题、摘要、关键词翻译成简体中文，不得编造。
+        以 JSON 输出：{"titleCN":"","abstractCN":"","keywordsCN":[]}
+        标题：{title}
+        摘要：{abstract}
+        关键词：{keywords}
+        """,
+        classificationSystem: "You are a precise medical editing assistant. Never fabricate.",
+        classificationUser: """
+        从候选主题路径中选择最匹配的一条，仅基于给定文本，未匹配则选择最接近的一条并降低置信度。
+        以 JSON 输出：{"topicPath":"","confidence":0.0}
+        候选：{candidates}
+        标题：{title}
+        摘要：{abstract}
+        """
+    )
+
+    /// 按占位符生成翻译 Prompt（纯函数，便于单元测试）。
+    func translationPrompt(title: String, abstract: String, keywords: [String]) -> String {
+        translationUser
+            .replacingOccurrences(of: "{title}", with: title)
+            .replacingOccurrences(of: "{abstract}", with: abstract)
+            .replacingOccurrences(of: "{keywords}", with: keywords.joined(separator: "; "))
+    }
+
+    /// 按占位符生成主题分类 Prompt（纯函数，便于单元测试）。
+    func classificationPrompt(title: String, abstract: String, candidates: [String]) -> String {
+        classificationUser
+            .replacingOccurrences(of: "{candidates}", with: candidates.joined(separator: " | "))
+            .replacingOccurrences(of: "{title}", with: title)
+            .replacingOccurrences(of: "{abstract}", with: abstract)
+    }
+}
+
 /// OpenAI 兼容 Provider（也适配国产兼容端点）。真实 HTTP 调用，用户自持 Key。
 struct OpenAICompatibleLLM: LLMProviding {
     let apiKey: String
     let model: String
     let endpoint: URL
     let session: URLSession
+    let templates: PromptTemplates
 
-    init(apiKey: String, model: String = "gpt-4o-mini", endpoint: URL = URL(string: "https://api.openai.com/v1/chat/completions")!, session: URLSession = .shared) {
+    init(apiKey: String, model: String = "gpt-4o-mini", endpoint: URL = URL(string: "https://api.openai.com/v1/chat/completions")!, session: URLSession = .shared, templates: PromptTemplates = .default) {
         self.apiKey = apiKey
         self.model = model
         self.endpoint = endpoint
         self.session = session
+        self.templates = templates
     }
 
     func translate(_ request: TranslationRequest) async throws -> TranslationResult {
         guard !apiKey.isEmpty else { throw LLMError.notConfigured }
-        let prompt = """
-        你是医学翻译助手。仅基于给定文本，将标题、摘要、关键词翻译成简体中文，不得编造。
-        以 JSON 输出：{"titleCN":"","abstractCN":"","keywordsCN":[]}
-        标题：\(request.title)
-        摘要：\(request.abstract)
-        关键词：\(request.keywords.joined(separator: "; "))
-        """
-        let content = try await complete(prompt: prompt)
+        let prompt = templates.translationPrompt(
+            title: request.title,
+            abstract: request.abstract,
+            keywords: request.keywords
+        )
+        let content = try await complete(system: templates.translationSystem, prompt: prompt)
         guard let data = extractJSON(content)?.data(using: .utf8),
               let result = try? JSONDecoder().decode(TranslationResult.self, from: data) else {
             throw LLMError.badResponse(content)
@@ -94,14 +138,12 @@ struct OpenAICompatibleLLM: LLMProviding {
 
     func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
         guard !apiKey.isEmpty else { throw LLMError.notConfigured }
-        let prompt = """
-        从候选主题路径中选择最匹配的一条，仅基于给定文本，未匹配则选择最接近的一条并降低置信度。
-        以 JSON 输出：{"topicPath":"","confidence":0.0}
-        候选：\(candidatePaths.joined(separator: " | "))
-        标题：\(title)
-        摘要：\(abstract)
-        """
-        let content = try await complete(prompt: prompt)
+        let prompt = templates.classificationPrompt(
+            title: title,
+            abstract: abstract,
+            candidates: candidatePaths
+        )
+        let content = try await complete(system: templates.classificationSystem, prompt: prompt)
         guard let data = extractJSON(content)?.data(using: .utf8),
               let result = try? JSONDecoder().decode(TopicClassificationResult.self, from: data) else {
             throw LLMError.badResponse(content)
@@ -109,7 +151,7 @@ struct OpenAICompatibleLLM: LLMProviding {
         return result
     }
 
-    private func complete(prompt: String) async throws -> String {
+    private func complete(system: String, prompt: String) async throws -> String {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -118,7 +160,7 @@ struct OpenAICompatibleLLM: LLMProviding {
             "model": model,
             "temperature": 0,
             "messages": [
-                ["role": "system", "content": "You are a precise medical editing assistant. Never fabricate."],
+                ["role": "system", "content": system],
                 ["role": "user", "content": prompt]
             ]
         ]
