@@ -325,11 +325,10 @@ struct ProcessingTaskRow: View {
                     .foregroundStyle(AppTheme.textSecondary)
             }
             Spacer()
-            Toggle("", isOn: .constant(task.isEnabled))
+            Toggle("", isOn: Binding(get: { task.isEnabled }, set: { _ in action() }))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .tint(AppTheme.accent)
-                .onTapGesture(perform: action)
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14).fill(AppTheme.panelSecondary))
@@ -502,15 +501,17 @@ struct SlidePreviewCard: View {
             Text("摘要：\(article.abstractCN)")
                 .font(.system(size: 11.5, weight: .medium))
                 .lineSpacing(4)
+                .lineLimit(8)
                 .padding(.top, 16)
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
             VStack(alignment: .leading, spacing: 6) {
                 Divider()
                 Text("参考文献：\(article.citation)")
                     .font(.system(size: 8.5, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(3)
                 Text("点击查看原文链接")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
@@ -520,14 +521,16 @@ struct SlidePreviewCard: View {
                 Text(article.url)
                     .font(.system(size: 8.5))
                     .foregroundStyle(AppTheme.accentBlue)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Text("*版权问题暂不提供直接下载，如有学术交流需要，请联系内部人员")
                     .font(.system(size: 8))
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 10)
         }
-        .padding(26)
-        .frame(width: 420, height: 594)
+        .padding(20)
+        .frame(width: 320, height: 452)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.line))
         .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
@@ -535,17 +538,19 @@ struct SlidePreviewCard: View {
 }
 
 struct SlideSettingsPanel: View {
+    let templateName: String
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionTitle(title: "模板设置")
                 .padding(.bottom, 10)
-            SettingInlineRow(title: "客户模板", subtitle: "20260413-PFA图书馆-onepage.pptx", trailing: "A4 纵向")
+            SettingInlineRow(title: "客户模板", subtitle: templateName, trailing: "A4 纵向")
             Divider()
             SettingInlineRow(title: "分组维度", subtitle: "按四级主题生成独立 deck", trailing: "topic")
             Divider()
             SettingInlineRow(title: "导出字段", subtitle: "含超链接与版权免责声明", trailing: "编辑")
         }
-        .frame(width: 240, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .roundedPanel()
     }
 }
@@ -663,55 +668,31 @@ struct MappingPanel: View {
     }
 }
 
-struct SettingsCard: View {
-    let rows: [(String, String, String)]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.0)
-                            .font(.system(size: 13.5, weight: .semibold))
-                        Text(row.1)
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    Spacer()
-                    if index < 2 {
-                        TextField("", text: .constant(row.2))
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 220)
-                    } else {
-                        Button(row.2) {}
-                    }
-                }
-                .padding(16)
-                if index != rows.count - 1 {
-                    Divider()
-                }
-            }
-        }
-        .roundedPanel(padding: 0)
-    }
-}
-
 struct TopicTreePanel: View {
     let nodes: [TopicNode]
+    var highlightLeaf: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(nodes) { node in
-                TopicTreeNodeView(node: node, highlightLeaf: "原理——PFA与既往热能源有何不同？")
+        if nodes.isEmpty {
+            EmptyStateView(
+                icon: "list.bullet.indent",
+                title: "暂无分类体系",
+                message: "在设置中导入分类字典（四级菜单），或载入示例数据。"
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(nodes) { node in
+                    TopicTreeNodeView(node: node, highlightLeaf: highlightLeaf)
+                }
             }
+            .roundedPanel()
         }
-        .roundedPanel()
     }
 }
 
 struct TopicTreeNodeView: View {
     let node: TopicNode
-    let highlightLeaf: String
+    let highlightLeaf: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -772,5 +753,40 @@ struct FlowLayout<Content: View>: View {
         HStack(spacing: spacing) {
             content
         }
+    }
+}
+
+/// 统一的空状态占位视图：无数据时替代示例内容，并给出下一步操作提示。
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let message: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 34, weight: .regular))
+                .foregroundStyle(AppTheme.textTertiary)
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .frame(maxWidth: 360)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.accent)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
+        .padding(.horizontal, 20)
+        .roundedPanel()
     }
 }

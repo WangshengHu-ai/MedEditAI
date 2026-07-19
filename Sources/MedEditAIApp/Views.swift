@@ -14,17 +14,20 @@ struct SidebarView: View {
 
             Section("项目") {
                 ForEach(viewModel.projects) { project in
-                    HStack(spacing: 10) {
-                        Circle()
-                            .fill(project.color)
-                            .frame(width: 8, height: 8)
-                        Text(project.name)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         viewModel.chooseProject(project)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(project.color)
+                                .frame(width: 8, height: 8)
+                            Text(project.name)
+                                .foregroundStyle(viewModel.selectedProject.id == project.id ? AppTheme.accent : .primary)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -52,12 +55,13 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 24) {
                 PageHeader(
                     title: viewModel.selectedProject.name,
-                    subtitle: "真实案例驱动的医学编辑工作台，当前项目为 PFA 图书馆"
+                    subtitle: "真实案例驱动的医学编辑工作台"
                 ) {
                     HStack(spacing: 10) {
-                        Button("演示批处理") {
-                            viewModel.navigate(to: .enrich)
-                            Task { await viewModel.runEnrichment() }
+                        if viewModel.hasData {
+                            Button("清空数据") { viewModel.clearAll() }
+                        } else {
+                            Button("载入示例数据") { viewModel.loadSampleData() }
                         }
                         Button("开始检索") {
                             viewModel.navigate(to: .search)
@@ -67,7 +71,7 @@ struct DashboardView: View {
                     }
                 }
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4), spacing: 14) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
                     ForEach(viewModel.stats) { item in
                         StatCard(item: item)
                     }
@@ -75,21 +79,27 @@ struct DashboardView: View {
 
                 SectionTitle(title: "快捷开始")
 
-                HStack(spacing: 14) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 14)], spacing: 14) {
                     ForEach(viewModel.quickActions) { action in
                         QuickActionCard(action: action) {
-                            viewModel.navigate(to: action.destination)
+                            switch action.destination {
+                            case .library:
+                                viewModel.importDocument()
+                            default:
+                                viewModel.navigate(to: action.destination)
+                            }
                         }
                     }
                 }
 
-                HStack(alignment: .top, spacing: 14) {
+                if viewModel.hasData {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle(title: "项目提醒")
                         VStack(spacing: 0) {
                             ForEach(viewModel.alerts) { alert in
                                 HStack(spacing: 12) {
-                                    ConfidenceBadge(level: .high)
+                                    Image(systemName: "bell.badge.fill")
+                                        .foregroundStyle(AppTheme.accent)
                                     Text(alert.title)
                                         .font(.system(size: 13.5, weight: .medium))
                                     Spacer()
@@ -102,23 +112,14 @@ struct DashboardView: View {
                         }
                         .roundedPanel()
                     }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        SectionTitle(title: "PFA 案例摘要")
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("当前原型直接按真实案例抽象：工作稿 Excel 与交付 Excel 为两套不同列结构；主题分类采用四级菜单树；研究类型存在客户自定义术语；PPT 为纵向 A4 onepage 结构化模板。")
-                                .font(.system(size: 13.5))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .lineSpacing(4)
-
-                            HStack(spacing: 8) {
-                                Chip(text: "四级主题树", tint: AppTheme.accent)
-                                Chip(text: "自定义 IF 数据源", tint: AppTheme.accentBlue)
-                                Chip(text: "用户模板 PPT", tint: AppTheme.ok)
-                            }
-                        }
-                        .roundedPanel()
-                    }
+                } else {
+                    EmptyStateView(
+                        icon: "tray",
+                        title: "文献库为空",
+                        message: "从 PubMed 检索、导入你自己的 Excel/CSV 清单，或先载入内置示例数据来体验完整流程。",
+                        actionTitle: "载入示例数据",
+                        action: { viewModel.loadSampleData() }
+                    )
                 }
             }
             .padding(24)
@@ -134,27 +135,28 @@ struct SearchView: View {
             VStack(alignment: .leading, spacing: 20) {
                 PageHeader(title: "检索中心", subtitle: "透明展示 PubMed query，支持从零开始检索并直接入库") {
                     HStack(spacing: 10) {
-                        Button("高级检索式构建器") {}
+                        Button("清空检索词") { viewModel.searchText = "" }
+                            .disabled(viewModel.searchText.isEmpty)
                         Button("批量检索入库") {
                             Task { await viewModel.runSearch() }
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
-                        .disabled(viewModel.isBusy)
+                        .disabled(viewModel.isBusy || viewModel.searchTerms.isEmpty)
                     }
                 }
 
                 HStack(spacing: 12) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(AppTheme.textSecondary)
-                    TextField("输入检索词", text: $viewModel.searchText)
+                    TextField("输入检索词（多个词用 AND 连接）", text: $viewModel.searchText)
                         .textFieldStyle(.plain)
                     Button("检索") {
                         Task { await viewModel.runSearch() }
                     }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
-                        .disabled(viewModel.isBusy)
+                        .disabled(viewModel.isBusy || viewModel.searchTerms.isEmpty)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -167,6 +169,14 @@ struct SearchView: View {
                         .stroke(AppTheme.line)
                 )
 
+                HStack(spacing: 10) {
+                    Text("起始年份")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Stepper("\(viewModel.yearFrom)", value: $viewModel.yearFrom, in: 1900...3000)
+                        .frame(width: 140)
+                }
+
                 FlowLayout(spacing: 8) {
                     ForEach(viewModel.searchFilters, id: \.self) { filter in
                         FilterChip(text: filter, isOn: viewModel.enabledFilters.contains(filter)) {
@@ -175,24 +185,38 @@ struct SearchView: View {
                     }
                 }
 
-                Text("PubMed query: (\"pulsed field ablation\"[Title/Abstract] OR PFA[Title/Abstract]) AND (\"atrial fibrillation\"[Title/Abstract] OR AF[Title/Abstract]) AND (2024:3000[pdat])")
+                Text("PubMed query: \(viewModel.displayedQuery)")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(AppTheme.textSecondary)
+                    .textSelection(.enabled)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppTheme.panelSecondary))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4])).foregroundStyle(AppTheme.line))
 
-                VStack(spacing: 0) {
-                    SearchHeaderRow()
-                    ForEach(Array(viewModel.articles.enumerated()), id: \.element.id) { index, article in
-                        SearchArticleRow(article: article, isChecked: index < 3)
-                        if article.id != viewModel.articles.last?.id {
-                            Divider()
+                if viewModel.articles.isEmpty {
+                    EmptyStateView(
+                        icon: "magnifyingglass",
+                        title: "暂无检索结果",
+                        message: "点击“批量检索入库”从 PubMed 拉取文献，或在文献库导入本地 Excel/CSV。勾选结果可仅导出所选。"
+                    )
+                } else {
+                    VStack(spacing: 0) {
+                        SearchHeaderRow()
+                        ForEach(viewModel.articles) { article in
+                            Button {
+                                viewModel.toggleExportSelection(article)
+                            } label: {
+                                SearchArticleRow(article: article, isChecked: viewModel.isSelectedForExport(article))
+                            }
+                            .buttonStyle(.plain)
+                            if article.id != viewModel.articles.last?.id {
+                                Divider()
+                            }
                         }
                     }
+                    .roundedPanel(padding: 0)
                 }
-                .roundedPanel(padding: 0)
             }
             .padding(24)
         }
@@ -223,17 +247,27 @@ struct LibraryListView: View {
                     TopicTreePanel(nodes: viewModel.topicTree)
                         .frame(width: 260, alignment: .topLeading)
 
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.articles) { article in
-                            Button {
-                                viewModel.chooseArticle(article)
-                            } label: {
-                                ArticleListCard(article: article, isSelected: viewModel.selectedArticle?.id == article.id)
+                    if viewModel.articles.isEmpty {
+                        EmptyStateView(
+                            icon: "books.vertical",
+                            title: "文献库为空",
+                            message: "点击右上角“导入 Excel”从本地清单智能映射入库，或到检索中心从 PubMed 拉取。",
+                            actionTitle: "导入 Excel/CSV",
+                            action: { viewModel.importDocument() }
+                        )
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.articles) { article in
+                                Button {
+                                    viewModel.chooseArticle(article)
+                                } label: {
+                                    ArticleListCard(article: article, isSelected: viewModel.selectedArticle?.id == article.id)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .roundedPanel(padding: 0)
                     }
-                    .roundedPanel(padding: 0)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -344,7 +378,9 @@ struct EnrichView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle(title: "批处理队列")
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("本次将处理 23 篇文献，优先输出中文摘要、研究设计、主题分类与 IF 匹配。")
+                            Text(viewModel.hasData
+                                 ? "本次将处理 \(viewModel.articleCount) 篇文献，优先输出中文摘要、研究设计、主题分类与 IF 匹配。"
+                                 : "当前文献库为空，请先在检索中心或文献库导入数据后再运行批处理。")
                                 .font(.system(size: 13.5))
                                 .foregroundStyle(AppTheme.textSecondary)
 
@@ -354,11 +390,18 @@ struct EnrichView: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(AppTheme.textSecondary)
 
-                            VStack(spacing: 0) {
-                                ForEach(viewModel.queue) { item in
-                                    QueueRow(item: item)
-                                    if item.id != viewModel.queue.last?.id {
-                                        Divider()
+                            if viewModel.queue.isEmpty {
+                                Text("暂无排队文献")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(AppTheme.textTertiary)
+                                    .padding(.vertical, 8)
+                            } else {
+                                VStack(spacing: 0) {
+                                    ForEach(viewModel.queue) { item in
+                                        QueueRow(item: item)
+                                        if item.id != viewModel.queue.last?.id {
+                                            Divider()
+                                        }
                                     }
                                 }
                             }
@@ -370,7 +413,7 @@ struct EnrichView: View {
                 HStack(alignment: .top, spacing: 14) {
                     InfoPanel(title: "分类体系", text: "当前启用「PFA 图书馆主题树（四级）」与「PFA 研究类型（自定义）」两套方案，可按项目切换。", tags: ["四级菜单", "呈现方式字段", "备注字段"])
                     InfoPanel(title: "可信度策略", text: "所有 AI 结果都与原始文献字段分层存储，不覆盖原始数据。低置信度结果自动进入待复核列表。", tags: [])
-                    InfoPanel(title: "客户自定义术语", text: "示例：研究类型包含“综述”“社论”“动物实验”“土豆模型”。系统仅提供标准化机制，不强制替换客户术语。", tags: [])
+                    InfoPanel(title: "客户自定义术语", text: "示例：研究类型包含“\(viewModel.customStudyTerms.joined(separator: "”“"))”。系统仅提供标准化机制，不强制替换客户术语。", tags: [])
                 }
             }
             .padding(24)
@@ -389,20 +432,30 @@ struct SlidesView: View {
                         Button("导出 Excel") {
                             viewModel.exportExcel()
                         }
+                        .disabled(!viewModel.hasData)
                         Button("导出 PPT") {
                             viewModel.exportPPTX()
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
+                        .disabled(!viewModel.hasData)
                     }
                 }
 
-                HStack(alignment: .top, spacing: 16) {
+                if !viewModel.hasData {
+                    EmptyStateView(
+                        icon: "play.rectangle.on.rectangle",
+                        title: "暂无可生成的交付物",
+                        message: "请先导入文献或从 PubMed 检索。产出生成会使用你选择的 onepage .pptx 模板与自定义 Excel 导出模板。",
+                        actionTitle: "载入示例数据",
+                        action: { viewModel.loadSampleData() }
+                    )
+                } else {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionTitle(title: "PPT 预览（onepage 模板）")
-                        HStack(alignment: .top, spacing: 14) {
-                            VStack(spacing: 10) {
-                                ForEach(Array(viewModel.articles.prefix(5).enumerated()), id: \.element.id) { index, article in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(Array(viewModel.articles.prefix(8).enumerated()), id: \.element.id) { index, article in
                                     Button {
                                         viewModel.chooseSlide(index: index)
                                     } label: {
@@ -411,19 +464,15 @@ struct SlidesView: View {
                                     .buttonStyle(.plain)
                                 }
                             }
-
-                            SlidePreviewCard(article: viewModel.activeArticle)
-
-                            SlideSettingsPanel()
+                            .padding(.vertical, 4)
                         }
-                        .roundedPanel()
                     }
+                    .roundedPanel()
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        MappingPanel(title: "PPT 占位符映射", items: viewModel.pptMappings)
-                        MappingPanel(title: "Excel 导出模板", items: Array(viewModel.exportMappings.prefix(6)), footer: "支持自定义列名、列顺序、超链接字段和年份化 IF 列（如“2025年IF”）。")
-                    }
-                    .frame(width: 340)
+                    SlideSettingsPanel(templateName: viewModel.pptTemplateName)
+
+                    MappingPanel(title: "PPT 占位符映射", items: viewModel.pptMappings)
+                    MappingPanel(title: "Excel 导出模板", items: Array(viewModel.exportMappings.prefix(6)), footer: "支持自定义列名、列顺序、超链接字段和年份化 IF 列（如“2025年IF”）。")
                 }
             }
             .padding(24)
