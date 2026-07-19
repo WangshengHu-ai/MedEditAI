@@ -176,6 +176,23 @@ const data = {
     ['研究类型', 'studyDesign'],
     ['主题分类', 'topicCategories'],
   ],
+  importFieldGuide: [
+    { key: 'topic', label: '主题分类', desc: '文章所属主题词条；用于主题筛选和分组导出。', priority: 'recommended' },
+    { key: 'titleEN', label: '标题（英文）', desc: '文献英文标题；导入必填（至少一列映射到此字段）。', priority: 'required' },
+    { key: 'titleCN', label: '标题（中文）', desc: '中文标题；未提供时可在 AI 加工阶段补全。', priority: 'optional' },
+    { key: 'abstractEN', label: '摘要（原文）', desc: '原始摘要文本；用于翻译和分类推断。', priority: 'recommended' },
+    { key: 'abstractCN', label: '摘要（中文）', desc: '中文摘要；可人工填写或由 AI 生成。', priority: 'optional' },
+    { key: 'keywords', label: '关键词', desc: '关键词（可分号分隔）；增强检索与分类上下文。', priority: 'optional' },
+    { key: 'authors', label: '作者', desc: '作者列表；用于展示与引用。', priority: 'recommended' },
+    { key: 'date', label: '发表日期', desc: '日期或年份；用于排序与导出。', priority: 'recommended' },
+    { key: 'studyDesign', label: '研究类型', desc: '研究设计类型（RCT/队列/综述等）；可留空后续推断。', priority: 'recommended' },
+    { key: 'journal', label: '期刊', desc: '期刊名称；用于匹配 IF。', priority: 'recommended' },
+    { key: 'impactFactor', label: '影响因子', desc: '期刊 IF；可通过 IF 数据集自动回填。', priority: 'optional' },
+    { key: 'pmid', label: 'PMID', desc: 'PubMed 唯一标识；用于溯源与去重。', priority: 'recommended' },
+    { key: 'url', label: '原文链接', desc: 'DOI 或全文 URL；用于导出交付和跳转。', priority: 'recommended' },
+    { key: 'abstractLink', label: '摘要链接', desc: '摘要页链接（如 PubMed 页面）。', priority: 'optional' },
+    { key: 'note', label: '备注', desc: '人工说明、复核记录、客户关注点。', priority: 'optional' },
+  ],
   exportMappings: [
     ['主题', 'topic'],
     ['序号', 'sequence'],
@@ -867,12 +884,20 @@ function renderSettings() {
 
         <div class="grid grid-2 mt-24">
           <div class="card" style="padding:16px;">
-            <div class="section-title" style="margin:0 0 10px;">导入映射预览</div>
-            ${data.importMappings.map(([src, target]) => `
-              <div class="map-row">
-                <div class="map-pill src">${src}</div>
-                <div class="map-arrow">→</div>
-                <div class="map-pill">${target}</div>
+            <div class="section-title" style="margin:0 0 10px;">导入映射说明</div>
+            <div class="muted" style="font-size:12.5px; line-height:1.65; margin-bottom:10px;">
+              导入映射 = 您的 Excel 字段名（源列）映射到系统底层数据模型字段（target key）。系统会自动猜测，您也可以在导入确认界面逐列修改。字段优先级分为：必需 / 建议 / 可选。
+            </div>
+            ${data.importFieldGuide.map(field => `
+              <div class="field-guide-item">
+                <div class="field-guide-head">
+                  <div class="field-guide-label-wrap">
+                    <div class="field-guide-label">${field.label}</div>
+                    <span class="field-guide-badge ${field.priority === 'required' ? 'required' : field.priority === 'recommended' ? 'recommended' : 'optional'}">${field.priority === 'required' ? '必需' : field.priority === 'recommended' ? '建议' : '可选'}</span>
+                  </div>
+                  <div class="field-guide-key">${field.key}</div>
+                </div>
+                <div class="field-guide-desc">${field.desc}</div>
               </div>
             `).join('')}
           </div>

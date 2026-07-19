@@ -7,10 +7,26 @@ enum ImportKind: String, Codable, Hashable {
     case unknown
 }
 
+/// 导入字段优先级：用于在 UI 中提示“必需/建议/可选”。
+enum ImportFieldPriority: String, Codable, Hashable {
+    case required
+    case recommended
+    case optional
+}
+
 /// 底层模型可映射的规范字段（用于确认界面的下拉选择）。
 struct CanonicalField: Identifiable, Hashable {
     let id: String   // 规范字段 key，"" 表示忽略
     let label: String
+    let hint: String
+    let priority: ImportFieldPriority
+
+    init(id: String, label: String, hint: String = "", priority: ImportFieldPriority = .optional) {
+        self.id = id
+        self.label = label
+        self.hint = hint
+        self.priority = priority
+    }
 }
 
 /// 单个源列 → 规范字段的映射建议，用户可在确认界面调整。
@@ -65,23 +81,28 @@ struct ImportAnalysis: Identifiable, Hashable {
 enum ImportAnalyzer {
     /// 可映射的底层规范字段目录（下拉选项）。
     static let canonicalFields: [CanonicalField] = [
-        .init(id: "", label: "忽略此列"),
-        .init(id: "topic", label: "主题分类"),
-        .init(id: "titleEN", label: "标题（英文）"),
-        .init(id: "titleCN", label: "标题（中文）"),
-        .init(id: "abstractEN", label: "摘要（原文）"),
-        .init(id: "abstractCN", label: "摘要（中文）"),
-        .init(id: "keywords", label: "关键词"),
-        .init(id: "authors", label: "作者"),
-        .init(id: "date", label: "发表日期"),
-        .init(id: "studyDesign", label: "研究类型"),
-        .init(id: "journal", label: "期刊"),
-        .init(id: "impactFactor", label: "影响因子"),
-        .init(id: "pmid", label: "PMID"),
-        .init(id: "url", label: "原文链接"),
-        .init(id: "abstractLink", label: "摘要链接"),
-        .init(id: "note", label: "备注")
+        .init(id: "", label: "忽略此列", hint: "该列不会导入到文献数据模型。"),
+        .init(id: "topic", label: "主题分类", hint: "文章所属的主题词条（可用于主题树筛选和分组导出）。建议源列名：主题 / 主题分类。", priority: .recommended),
+        .init(id: "titleEN", label: "标题（英文）", hint: "文献英文标题。导入必需字段（至少需要一列映射到它）。建议源列名：标题 / Title。", priority: .required),
+        .init(id: "titleCN", label: "标题（中文）", hint: "人工或 AI 翻译后的中文标题。可空，后续可由 AI 加工补全。", priority: .optional),
+        .init(id: "abstractEN", label: "摘要（原文）", hint: "原始摘要（通常为英文），用于 AI 翻译和分类推断。建议源列名：摘要原文 / Abstract。", priority: .recommended),
+        .init(id: "abstractCN", label: "摘要（中文）", hint: "中文摘要。若未提供，可在 AI 加工阶段自动生成。", priority: .optional),
+        .init(id: "keywords", label: "关键词", hint: "关键词字符串（可分号分隔），用于检索和 AI 上下文增强。"),
+        .init(id: "authors", label: "作者", hint: "作者信息（通常为逗号分隔），用于卡片展示和引用。", priority: .recommended),
+        .init(id: "date", label: "发表日期", hint: "发表日期或年份（支持文本格式）。用于排序和导出。", priority: .recommended),
+        .init(id: "studyDesign", label: "研究类型", hint: "研究设计/类型（如 RCT、队列、综述）。可留空，后续由规则或 AI 推断。", priority: .recommended),
+        .init(id: "journal", label: "期刊", hint: "期刊名称。用于 IF 匹配。", priority: .recommended),
+        .init(id: "impactFactor", label: "影响因子", hint: "期刊 IF 数值。可由导入 IF 数据集后自动回填。"),
+        .init(id: "pmid", label: "PMID", hint: "PubMed ID。用于溯源、去重和外链定位。", priority: .recommended),
+        .init(id: "url", label: "原文链接", hint: "DOI/全文 URL，用于导出交付和跳转查看。", priority: .recommended),
+        .init(id: "abstractLink", label: "摘要链接", hint: "摘要页链接（如 PubMed 页面），用于导出交付字段。"),
+        .init(id: "note", label: "备注", hint: "人工补充说明、复核记录、客户关注点等。")
     ]
+
+    /// 文献导入时必须命中的底层字段（当前最小集合：英文标题）。
+    static var requiredImportFieldIDs: Set<String> {
+        Set(canonicalFields.filter { $0.priority == .required }.map(\.id))
+    }
 
     static func label(for field: String) -> String {
         canonicalFields.first(where: { $0.id == field })?.label ?? field

@@ -688,6 +688,72 @@ struct MappingPanel: View {
     }
 }
 
+/// 解释“导入映射”的含义，并列出底层数据模型字段，帮助用户理解每一列应映射到哪里。
+struct ImportFieldGuidePanel: View {
+    let fields: [CanonicalField]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(title: "导入映射说明")
+            Text("导入映射 = 您的 Excel 列名（源列）映射到系统底层字段（target key）。导入时，系统会先自动猜测，您可在“确认导入字段映射”中逐列修改。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+                .lineSpacing(4)
+
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(fields.filter { !$0.id.isEmpty }) { field in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Text(field.label)
+                                    .font(.system(size: 13.5, weight: .semibold))
+                                Text(priorityTitle(for: field.priority))
+                                    .font(.system(size: 10.5, weight: .bold))
+                                    .foregroundStyle(priorityColor(for: field.priority))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(priorityColor(for: field.priority).opacity(0.12)))
+                                Spacer()
+                                Text(field.id)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundStyle(AppTheme.textTertiary)
+                            }
+
+                            Text(field.hint)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .lineSpacing(3)
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.line))
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxHeight: 340)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
+    }
+
+    private func priorityTitle(for priority: ImportFieldPriority) -> String {
+        switch priority {
+        case .required: "必需"
+        case .recommended: "建议"
+        case .optional: "可选"
+        }
+    }
+
+    private func priorityColor(for priority: ImportFieldPriority) -> Color {
+        switch priority {
+        case .required: .red
+        case .recommended: AppTheme.accent
+        case .optional: AppTheme.textSecondary
+        }
+    }
+}
+
 /// 手动新增一条主题分类路径（无需导入 Excel），格式：主题>次级>三级>四级，也支持只输入单个词条。
 struct ManualTopicEntryField: View {
     @ObservedObject var viewModel: AppViewModel
@@ -1049,6 +1115,16 @@ struct ImportMappingSheet: View {
     private var articleContent: some View {
         ScrollView {
             VStack(spacing: 0) {
+                if !missingRequiredFields.isEmpty {
+                    Text("缺少必需映射：\(missingRequiredFields.map(\.label).joined(separator: "、"))。请至少完成这些字段映射后再导入。")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 6)
+                }
+
                 HStack {
                     Text("源列 / 示例值")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1148,6 +1224,17 @@ struct ImportMappingSheet: View {
         ClassificationEngine.flattenPaths(in: ImportAnalyzer.classificationScheme(from: analysis, proposals: proposals)).count
     }
 
+    private var mappedArticleFieldIDs: Set<String> {
+        Set(proposals.map(\.field).filter { !$0.isEmpty })
+    }
+
+    private var missingRequiredFields: [CanonicalField] {
+        guard analysis.kind == .articles else { return [] }
+        return viewModel.canonicalFieldOptions.filter {
+            $0.priority == .required && !mappedArticleFieldIDs.contains($0.id)
+        }
+    }
+
     private var footer: some View {
         HStack {
             Button("取消") { viewModel.cancelImport() }
@@ -1160,6 +1247,7 @@ struct ImportMappingSheet: View {
                     viewModel.confirmArticleImport(proposals: proposals)
                 }
             }
+            .disabled(analysis.kind == .articles && !missingRequiredFields.isEmpty)
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accent)
             .accessibilityIdentifier("btn-confirm-import")

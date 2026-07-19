@@ -709,7 +709,7 @@ struct SettingsView: View {
                 }
 
                 HStack(alignment: .top, spacing: 16) {
-                    MappingPanel(title: "导入映射预览", items: viewModel.importMappings)
+                    ImportFieldGuidePanel(fields: viewModel.canonicalFieldOptions)
                     InfoPanel(
                         title: "数据源状态",
                         text: "文献 \(viewModel.articles.count) 篇已入库；IF 数据 \(viewModel.impactFactorByJournal.count) 条；PPT 模板 \(viewModel.pptTemplateURL == nil ? "未配置" : "已配置")。所有数据本地持久化，可离线使用。",
