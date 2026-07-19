@@ -74,17 +74,18 @@ final class MedEditAIUITests: XCTestCase {
 
     func testAddProjectFromSidebar() {
         let app = launchApp()
-        let addButton = app.buttons["btn-add-project"]
-        XCTAssertTrue(addButton.waitForExistence(timeout: 10))
+        // 分区头中的图标按钮以“任意类型 + 标识”查询更稳，避免 AX 类型差异
+        let addButton = element("btn-add-project", in: app)
+        XCTAssertTrue(addButton.waitForExistence(timeout: 15))
         addButton.click()
 
-        let field = app.textFields["field-new-project"]
+        let field = element("field-new-project", in: app)
         XCTAssertTrue(field.waitForExistence(timeout: 10), "应弹出新建项目对话框")
         field.click()
         // 使用 ASCII 名称，避免 CI 无中文输入法导致的键入问题
         field.typeText("Oncology")
 
-        app.buttons["创建"].click()
+        app.buttons["创建"].firstMatch.click()
 
         // 新项目名应出现在侧栏（用 label 包含匹配，兼容按钮/静态文本等元素类型）
         let predicate = NSPredicate(format: "label CONTAINS %@", "Oncology")

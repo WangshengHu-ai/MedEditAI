@@ -60,6 +60,7 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("新建项目")
+                    .accessibilityLabel("新建项目")
                     .accessibilityIdentifier("btn-add-project")
                 }
             }
