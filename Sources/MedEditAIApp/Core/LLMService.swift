@@ -35,34 +35,7 @@ enum LLMError: Error, LocalizedError {
     }
 }
 
-/// 离线确定性 Provider：不联网，规则可预测，用于开发、测试与无网络降级。
-struct LocalDeterministicLLM: LLMProviding {
-    func translate(_ request: TranslationRequest) async throws -> TranslationResult {
-        TranslationResult(
-            titleCN: LocalGlossary.translate(request.title),
-            abstractCN: request.abstract.isEmpty ? "" : LocalGlossary.translate(request.abstract),
-            keywordsCN: request.keywords.map(LocalGlossary.translate)
-        )
-    }
-
-    func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
-        let haystack = (title + " " + abstract).lowercased()
-        var best: (path: String, score: Int)?
-        for path in candidatePaths {
-            let leaf = path.split(separator: ">").last.map { String($0).trimmingCharacters(in: .whitespaces) } ?? path
-            let tokens = leaf.lowercased().split(whereSeparator: { "—-,，、（）()".contains($0) })
-            let score = tokens.reduce(0) { $0 + (haystack.contains($1) ? 1 : 0) }
-            if best == nil || score > best!.score {
-                best = (path, score)
-            }
-        }
-        let confidence = best.map { $0.score > 0 ? 0.9 : 0.55 } ?? 0.5
-        return TopicClassificationResult(topicPath: best?.path ?? (candidatePaths.first ?? "未分类"), confidence: confidence)
-    }
-}
-
 /// 可查看/自定义的 AI 加工 Prompt 模板。占位符：{title} {abstract} {keywords} {candidates}。
-/// 仅在使用云端 LLM（OpenAICompatibleLLM）时生效；离线本地识别为规则匹配，不使用 Prompt。
 struct PromptTemplates: Codable, Hashable {
     var translationSystem: String
     var translationUser: String
@@ -184,30 +157,3 @@ struct OpenAICompatibleLLM: LLMProviding {
     }
 }
 
-/// 简单本地术语词典，供离线 Provider 使用。
-enum LocalGlossary {
-    private static let table: [String: String] = [
-        "Pulsed field ablation": "脉冲电场消融",
-        "pulsed field ablation": "脉冲电场消融",
-        "Radiofrequency Ablation": "射频消融",
-        "radiofrequency ablation": "射频消融",
-        "Electroporation": "电穿孔",
-        "electroporation": "电穿孔",
-        "atrial fibrillation": "心房颤动",
-        "Atrial fibrillation": "心房颤动",
-        "ablation": "消融",
-        "review": "综述",
-        "cardiac": "心脏"
-    ]
-
-    static func translate(_ text: String) -> String {
-        var result = text
-        for (english, chinese) in table.sorted(by: { $0.key.count > $1.key.count }) {
-            result = result.replacingOccurrences(of: english, with: chinese)
-        }
-        if result == text {
-            return "【待人工校对】" + text
-        }
-        return result
-    }
-}

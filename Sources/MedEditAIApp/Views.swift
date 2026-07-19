@@ -645,7 +645,7 @@ struct SettingsView: View {
                     VStack(spacing: 0) {
                         SettingsSecureRow(
                             title: "LLM API Key",
-                            subtitle: "留空则使用离线本地识别（规则匹配 + 术语词典，非大模型）；填入后调用云端 LLM",
+                            subtitle: "必填；用于调用云端 LLM 执行翻译与主题分析（未配置时无法进行 AI 加工）",
                             placeholder: "sk-...",
                             text: $viewModel.apiKey
                         )

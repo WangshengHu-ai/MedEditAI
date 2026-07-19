@@ -410,6 +410,10 @@ final class AppViewModel: ObservableObject {
     // MARK: - AI 加工：批量处理“选中”的文献（未选则全部），结果就地写回卡片
     func runEnrichment() async {
         guard !isBusy, !drafts.isEmpty else { return }
+        guard !apiKey.isEmpty else {
+            showToast("请先在设置中配置云端 LLM API Key")
+            return
+        }
         isBusy = true
         progress = 0
         defer { isBusy = false }
@@ -418,7 +422,7 @@ final class AppViewModel: ObservableObject {
         var working = drafts
         let total = working.indices.filter { targetIDs.contains(draftID(working[$0], index: $0)) }.count
         guard total > 0 else { showToast("请选择要加工的文献"); return }
-        showToast(apiKey.isEmpty ? "未配置 LLM Key，使用离线本地识别（翻译需人工校对）" : "使用云端 LLM 加工中…")
+        showToast("使用云端 LLM 加工中…")
 
         let service = enrichmentService()
         var processed = 0
@@ -613,8 +617,21 @@ final class AppViewModel: ObservableObject {
     }
 
     // MARK: - Helpers
+#if DEBUG
+    var sessionForTesting: URLSession?
+#endif
+
     private func enrichmentService() -> EnrichmentService {
-        let provider: LLMProviding = apiKey.isEmpty ? LocalDeterministicLLM() : OpenAICompatibleLLM(apiKey: apiKey, templates: promptTemplates)
+        let provider = OpenAICompatibleLLM(
+            apiKey: apiKey, 
+            session: {
+#if DEBUG
+                if let s = sessionForTesting { return s }
+#endif
+                return .shared
+            }(),
+            templates: promptTemplates
+        )
         return EnrichmentService(
             llm: provider,
             topicScheme: Self.scheme(from: topicTreeNodes),

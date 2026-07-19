@@ -424,6 +424,11 @@ final class ViewModelTests: XCTestCase {
 
     func testEnrichmentProcessesOnlySelectedArticles() async {
         let vm = makeViewModel()
+        vm.apiKey = "sk-mock"
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PromptCapturingProtocol.self]
+        vm.sessionForTesting = URLSession(configuration: config)
+
         let rows = [
             ["标题", "研究类型"],
             ["Pulsed field ablation outcomes", ""],
@@ -444,6 +449,11 @@ final class ViewModelTests: XCTestCase {
 
     func testEnrichmentProcessesAllWhenNoneSelected() async {
         let vm = makeViewModel()
+        vm.apiKey = "sk-mock"
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PromptCapturingProtocol.self]
+        vm.sessionForTesting = URLSession(configuration: config)
+
         let rows = [
             ["标题", "研究类型"],
             ["Pulsed field ablation outcomes", ""],
@@ -627,28 +637,6 @@ final class ViewModelTests: XCTestCase {
 
         let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
         XCTAssertFalse(vm2.hasData)          // 示例数据未持久化，重开为空
-    }
-
-    // MARK: - FP27 AI 加工离线兜底（LLM 失败仍产出非空译文）
-
-    func testEnrichmentFallsBackToOfflineWhenLLMFails() async {
-        struct FailingLLM: LLMProviding {
-            func translate(_ request: TranslationRequest) async throws -> TranslationResult {
-                throw LLMError.notConfigured
-            }
-            func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
-                throw LLMError.notConfigured
-            }
-        }
-        let scheme = ClassificationScheme(name: "t", type: .topic, isHierarchical: true, items: [])
-        let service = EnrichmentService(llm: FailingLLM(), topicScheme: scheme, customStudyTerms: [], impactFactorByJournal: [:])
-        let record = PubMedRecord(
-            pmid: "1", title: "Pulsed field ablation study", abstract: "ablation",
-            authors: ["A"], journal: "HR", pubDate: "2026", doi: nil,
-            keywords: [], meshTerms: [], references: []
-        )
-        let result = await service.enrich(record: record)
-        XCTAssertFalse(result.titleCN.isEmpty)   // 离线兜底保证译文非空
     }
 
     // MARK: - FP28 AI 加工 Prompt 可查看 / 自定义

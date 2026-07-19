@@ -1064,7 +1064,7 @@ struct PromptEditorSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("AI 加工 Prompt 模板")
                     .font(.system(size: 17, weight: .bold))
-                Text("占位符：{title} {abstract} {keywords} {candidates}。仅在配置了 API Key、使用云端 LLM 时生效；未配置 Key 时为离线规则识别，不使用 Prompt。")
+                Text("占位符：{title} {abstract} {keywords} {candidates}。")
                     .font(.system(size: 12))
                     .foregroundStyle(AppTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

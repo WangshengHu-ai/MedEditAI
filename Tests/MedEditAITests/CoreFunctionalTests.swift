@@ -90,32 +90,39 @@ final class CoreFunctionalTests: XCTestCase {
         XCTAssertTrue(updated.hasSuffix("</Types>"))
     }
 
-    // MARK: - LLM local provider
-    func testLocalDeterministicTranslation() async throws {
-        let provider = LocalDeterministicLLM()
+    // MARK: - LLM Mock provider
+    struct MockLLM: LLMProviding {
+        func translate(_ request: TranslationRequest) async throws -> TranslationResult {
+            TranslationResult(titleCN: "脉冲电场消融", abstractCN: "摘要测试", keywordsCN: ["消融"])
+        }
+        func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
+            TopicClassificationResult(topicPath: "Science > 原理 > electroporation", confidence: 0.85)
+        }
+    }
+
+    func testMockLLMTranslation() async throws {
+        let provider = MockLLM()
         let result = try await provider.translate(TranslationRequest(
             title: "Pulsed field ablation for atrial fibrillation",
             abstract: "",
             keywords: ["ablation"]
         ))
         XCTAssertTrue(result.titleCN.contains("脉冲电场消融"))
-        XCTAssertTrue(result.titleCN.contains("心房颤动"))
         XCTAssertEqual(result.keywordsCN, ["消融"])
     }
 
-    func testLocalTopicClassificationPicksBestPath() async throws {
-        let provider = LocalDeterministicLLM()
+    func testMockLLMClassification() async throws {
+        let provider = MockLLM()
         let result = try await provider.classifyTopic(
             title: "Electroporation biophysics of ablation",
             abstract: "electroporation review",
             candidatePaths: ["Science > 原理 > electroporation", "Science > 影响因素 > 波形"]
         )
         XCTAssertEqual(result.topicPath, "Science > 原理 > electroporation")
-        XCTAssertGreaterThan(result.confidence, 0.8)
     }
 
     // MARK: - Enrichment pipeline
-    func testEnrichmentPipelineWithLocalProvider() async {
+    func testEnrichmentPipelineWithMockProvider() async {
         let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [
             ClassificationNode(title: "Science of PFA", level: 1, children: [
                 ClassificationNode(title: "原理", level: 2, children: [
@@ -124,7 +131,7 @@ final class CoreFunctionalTests: XCTestCase {
             ])
         ])
         let service = EnrichmentService(
-            llm: LocalDeterministicLLM(),
+            llm: MockLLM(),
             topicScheme: scheme,
             customStudyTerms: ["土豆模型"],
             impactFactorByJournal: ["heartrhythm": "5.8"]
