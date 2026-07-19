@@ -17,7 +17,7 @@ struct SidebarView: View {
                 }
             }
 
-            Section {
+            Section("项目") {
                 ForEach(viewModel.projects) { project in
                     Button {
                         viewModel.chooseProject(project)
@@ -48,21 +48,6 @@ struct SidebarView: View {
                         }
                     }
                 }
-            } header: {
-                HStack {
-                    Text("项目")
-                    Spacer()
-                    Button {
-                        newProjectName = ""
-                        showingAddProject = true
-                    } label: {
-                        Image(systemName: "plus.circle")
-                    }
-                    .buttonStyle(.plain)
-                    .help("新建项目")
-                    .accessibilityLabel("新建项目")
-                    .accessibilityIdentifier("btn-add-project")
-                }
             }
         }
         .listStyle(.sidebar)
@@ -87,13 +72,26 @@ struct SidebarView: View {
             Button("取消", role: .cancel) { renamingProject = nil }
         }
         .safeAreaInset(edge: .bottom) {
-            Button {
-                viewModel.navigate(to: .settings)
-            } label: {
-                Label("设置", systemImage: "gearshape.fill")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                Button {
+                    newProjectName = ""
+                    showingAddProject = true
+                } label: {
+                    Label("新建项目", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("btn-add-project")
+
+                Spacer()
+
+                Button {
+                    viewModel.navigate(to: .settings)
+                } label: {
+                    Label("设置", systemImage: "gearshape.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("btn-settings")
             }
-            .buttonStyle(.plain)
             .padding(12)
             .background(.bar)
         }

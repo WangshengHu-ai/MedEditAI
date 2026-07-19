@@ -74,8 +74,8 @@ final class MedEditAIUITests: XCTestCase {
 
     func testAddProjectFromSidebar() {
         let app = launchApp()
-        // 分区头中的图标按钮以“任意类型 + 标识”查询更稳，避免 AX 类型差异
-        let addButton = element("btn-add-project", in: app)
+        // 底部具名按钮，AX 暴露稳定
+        let addButton = app.buttons["btn-add-project"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 15))
         addButton.click()
 
