@@ -213,25 +213,43 @@ struct ArticleListCard: View {
     let article: Article
     let isSelected: Bool
 
+    private var metaLine: String {
+        var parts: [String] = []
+        if !article.authors.isEmpty { parts.append(article.authors) }
+        if !article.journal.isEmpty { parts.append(article.journal) }
+        if !article.pmid.isEmpty { parts.append("PMID \(article.pmid)") }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(article.titleEN)
+            Text(article.titleEN.isEmpty ? "(无标题)" : article.titleEN)
                 .font(.system(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(article.titleCN)
-                .font(.system(size: 12.5))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !article.titleCN.isEmpty {
+                Text(article.titleCN)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack(spacing: 8) {
-                TagView(text: article.studyType, tint: AppTheme.accent)
-                TagView(text: "IF \(article.impactFactor)", tint: AppTheme.accentBlue)
-                TagView(text: article.quartile, tint: article.quartile == "Q1" ? AppTheme.ok : AppTheme.textSecondary)
+                if !article.studyType.isEmpty {
+                    TagView(text: article.studyType, tint: AppTheme.accent)
+                }
+                if !article.impactFactor.isEmpty {
+                    TagView(text: "IF \(article.impactFactor)", tint: AppTheme.accentBlue)
+                }
+                if !article.quartile.isEmpty {
+                    TagView(text: article.quartile, tint: article.quartile == "Q1" ? AppTheme.ok : AppTheme.textSecondary)
+                }
                 ConfidenceBadge(level: article.confidence)
             }
-            Text("\(article.authors) · \(article.journal) · PMID \(article.pmid)")
-                .font(.system(size: 11.5))
-                .foregroundStyle(AppTheme.textTertiary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !metaLine.isEmpty {
+                Text(metaLine)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(16)
         .background(
@@ -531,7 +549,7 @@ struct SlidePreviewCard: View {
             .padding(.top, 10)
         }
         .padding(20)
-        .frame(width: 320, height: 452)
+        .frame(width: 300, height: 424)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.line))
         .shadow(color: .black.opacity(0.08), radius: 12, y: 8)
@@ -671,7 +689,8 @@ struct MappingPanel: View {
 
 struct TopicTreePanel: View {
     let nodes: [TopicNode]
-    var highlightLeaf: String? = nil
+    var selectedTitle: String? = nil
+    var onSelect: ((String) -> Void)? = nil
 
     var body: some View {
         if nodes.isEmpty {
@@ -683,7 +702,7 @@ struct TopicTreePanel: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(nodes) { node in
-                    TopicTreeNodeView(node: node, highlightLeaf: highlightLeaf)
+                    TopicTreeNodeView(node: node, selectedTitle: selectedTitle, onSelect: onSelect)
                 }
             }
             .roundedPanel()
@@ -693,40 +712,57 @@ struct TopicTreePanel: View {
 
 struct TopicTreeNodeView: View {
     let node: TopicNode
-    let highlightLeaf: String?
+    let selectedTitle: String?
+    var onSelect: ((String) -> Void)? = nil
+
+    private var isLeaf: Bool { node.children.isEmpty }
+    private var isSelected: Bool { node.title == selectedTitle }
+
+    @ViewBuilder private var rowLabel: some View {
+        HStack(spacing: 6) {
+            if !node.children.isEmpty {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.textTertiary)
+            } else {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textTertiary)
+            }
+            Text(node.title)
+                .font(font)
+                .foregroundStyle(isSelected ? AppTheme.accent : node.level >= 4 ? AppTheme.textSecondary : .primary)
+            Spacer()
+            if let count = node.count {
+                Text("\(count)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(AppTheme.panelSecondary))
+            }
+        }
+        .padding(.leading, CGFloat((node.level - 1) * 12))
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? AppTheme.accent.opacity(0.10) : .clear)
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if !node.children.isEmpty {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(AppTheme.textTertiary)
-                } else {
-                    Spacer().frame(width: 10)
-                }
-                Text(node.title)
-                    .font(font)
-                    .foregroundStyle(node.title == highlightLeaf ? AppTheme.accent : node.level >= 4 ? AppTheme.textSecondary : .primary)
-                Spacer()
-                if let count = node.count {
-                    Text("\(count)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(AppTheme.textTertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(AppTheme.panelSecondary))
-                }
+            if isLeaf {
+                Button { onSelect?(node.title) } label: { rowLabel }
+                    .buttonStyle(.plain)
+                    .help("点击按此主题筛选文献")
+            } else {
+                rowLabel
             }
-            .padding(.leading, CGFloat((node.level - 1) * 12))
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(node.title == highlightLeaf ? AppTheme.accent.opacity(0.10) : .clear)
-            )
 
             ForEach(node.children) { child in
-                TopicTreeNodeView(node: child, highlightLeaf: highlightLeaf)
+                TopicTreeNodeView(node: child, selectedTitle: selectedTitle, onSelect: onSelect)
             }
         }
     }

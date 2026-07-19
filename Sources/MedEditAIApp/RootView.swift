@@ -8,15 +8,15 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             NavigationSplitView {
                 SidebarView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
             } content: {
                 ContentShellView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 360, ideal: 480)
+                    .navigationSplitViewColumnWidth(min: 340, ideal: 440)
             } detail: {
                 DetailShellView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 360, ideal: 420)
+                    .navigationSplitViewColumnWidth(min: 340, ideal: 380)
             }
-            .frame(minWidth: 900, minHeight: 600)
+            .frame(minWidth: 820, minHeight: 560)
             .background(
                 LinearGradient(
                     colors: [Color(nsColor: .windowBackgroundColor), AppTheme.accent.opacity(0.03)],

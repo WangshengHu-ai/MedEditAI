@@ -9,7 +9,7 @@ final class AppViewModel: ObservableObject {
     @Published var selectedSection: AppSection? = .dashboard
     @Published var selectedArticleID: String?
     @Published var selectedSlideIndex: Int = 0
-    @Published var searchText: String = "pulsed field ablation AND atrial fibrillation"
+    @Published var searchText: String = ""
     @Published var yearFrom: Int = 2024
     @Published var sortOrder: PubMedSort = .bestMatch
     @Published var enabledFilters: Set<String> = []
@@ -38,7 +38,10 @@ final class AppViewModel: ObservableObject {
     @Published var pendingImport: ImportAnalysis?
     let canonicalFieldOptions = ImportAnalyzer.canonicalFields
 
-    let customStudyTerms = ["综述", "社论", "动物实验", "土豆模型"]
+    // MARK: - Topic filter (classification tree)
+    @Published var selectedTopic: String?
+
+    let customStudyTerms = ["综述", "社论", "动物实验"]
 
     // MARK: - Static config (navigation & previews, not result data)
     let quickActions = SampleData.quickActions
@@ -109,7 +112,7 @@ final class AppViewModel: ObservableObject {
     /// AI 加工目标数：有勾选则为勾选数，否则为全部。
     var enrichmentTargetCount: Int { selectedForExport.isEmpty ? drafts.count : selectedForExport.count }
 
-    /// 载入内置示例数据（按需，不再默认污染界面）。
+    /// 载入内置示例数据（仅当前会话预览，不持久化，避免重启后“假数据”残留）。
     func loadSampleData() {
         drafts = SampleData.articles.map(Self.draft(from:))
         topicTreeNodes = SampleData.topicTree
@@ -117,15 +120,16 @@ final class AppViewModel: ObservableObject {
             impactFactorByJournal = Self.sampleImpactFactors
         }
         selectedForExport = []
+        selectedTopic = nil
         selectedArticleID = articles.first?.id
-        persist()
-        showToast("已载入示例数据：\(drafts.count) 篇")
+        showToast("已载入示例数据（预览，不保存）：\(drafts.count) 篇")
     }
 
     /// 清空当前文献库，回到空状态。
     func clearAll() {
         drafts = []
         selectedForExport = []
+        selectedTopic = nil
         selectedArticleID = nil
         resetSearchPaging()
         persist()
@@ -137,8 +141,10 @@ final class AppViewModel: ObservableObject {
         guard project.id != selectedProjectID else { return }
         selectedProjectID = project.id
         selectedForExport = []
+        selectedTopic = nil
         selectedArticleID = articles.first?.id
         resetSearchPaging()
+        selectedSection = .dashboard    // 切换项目后回到工作台，给出明确反馈
         showToast("已切换项目：\(project.name)")
     }
 
@@ -190,6 +196,22 @@ final class AppViewModel: ObservableObject {
             let id = (draft.pmid?.isEmpty == false ? draft.pmid! : "row-\(index)")
             return Self.display(draft, id: id)
         }
+    }
+
+    /// 按当前选中的主题过滤后的文献列表（分类树点击驱动）。
+    var filteredArticles: [Article] {
+        guard let topic = selectedTopic, !topic.isEmpty else { return articles }
+        return articles.filter { $0.topic == topic }
+    }
+
+    /// 点击分类树叶子节点：选中则过滤，再次点击同一个则取消过滤。
+    func selectTopic(_ topic: String?) {
+        if let topic, selectedTopic != topic {
+            selectedTopic = topic
+        } else {
+            selectedTopic = nil
+        }
+        selectedArticleID = filteredArticles.first?.id
     }
 
     // MARK: - Derived dashboard data (live, never hardcoded)
@@ -394,6 +416,7 @@ final class AppViewModel: ObservableObject {
         var working = drafts
         let total = working.indices.filter { targetIDs.contains(draftID(working[$0], index: $0)) }.count
         guard total > 0 else { showToast("请选择要加工的文献"); return }
+        showToast(apiKey.isEmpty ? "未配置 LLM Key，使用离线本地识别（翻译需人工校对）" : "使用云端 LLM 加工中…")
 
         let service = enrichmentService()
         var processed = 0
@@ -484,6 +507,7 @@ final class AppViewModel: ObservableObject {
     func replaceDrafts(_ newDrafts: [ArticleDraft], toast: String? = nil) {
         drafts = newDrafts
         selectedForExport = []
+        selectedTopic = nil
         selectedArticleID = articles.first?.id
         persist()
         if let toast { showToast(toast) }

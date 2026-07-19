@@ -12,6 +12,8 @@ final class EnrichmentService {
     private let topicScheme: ClassificationScheme
     private let customStudyTerms: [String]
     private let impactFactorByJournal: [String: String]
+    /// 云端失败时的离线兜底，保证结果字段不为空。
+    private static let offline = LocalDeterministicLLM()
 
     init(llm: LLMProviding, topicScheme: ClassificationScheme, customStudyTerms: [String], impactFactorByJournal: [String: String]) {
         self.llm = llm
@@ -26,12 +28,14 @@ final class EnrichmentService {
 
         var titleCN = ""
         var abstractCN = ""
-        let translation = try? await llm.translate(TranslationRequest(title: record.title, abstract: record.abstract, keywords: record.keywords))
+        let request = TranslationRequest(title: record.title, abstract: record.abstract, keywords: record.keywords)
+        let translation = (try? await llm.translate(request)) ?? (try? await Self.offline.translate(request))
         titleCN = translation?.titleCN ?? ""
         abstractCN = translation?.abstractCN ?? ""
 
         let candidatePaths = ClassificationEngine.flattenPaths(in: topicScheme)
-        let classification = try? await llm.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths)
+        let classification = (try? await llm.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths))
+            ?? (try? await Self.offline.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths))
         let topicLeaf = classification.map { leaf(of: $0.topicPath) } ?? "未分类"
 
         let confidence = min(study.confidence, classification?.confidence ?? study.confidence)

@@ -334,8 +334,12 @@ struct LibraryListView: View {
 
             ScrollView {
                 HStack(alignment: .top, spacing: 16) {
-                    TopicTreePanel(nodes: viewModel.topicTree)
-                        .frame(width: 260, alignment: .topLeading)
+                    TopicTreePanel(
+                        nodes: viewModel.topicTree,
+                        selectedTitle: viewModel.selectedTopic,
+                        onSelect: { viewModel.selectTopic($0) }
+                    )
+                    .frame(width: 260, alignment: .topLeading)
 
                     if viewModel.articles.isEmpty {
                         EmptyStateView(
@@ -346,17 +350,41 @@ struct LibraryListView: View {
                             action: { viewModel.importDocument() }
                         )
                     } else {
-                        VStack(spacing: 0) {
-                            ForEach(viewModel.articles) { article in
-                                Button {
-                                    viewModel.chooseArticle(article)
-                                } label: {
-                                    ArticleListCard(article: article, isSelected: viewModel.selectedArticle?.id == article.id)
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let topic = viewModel.selectedTopic {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                        .foregroundStyle(AppTheme.accent)
+                                    Text("按主题筛选：\(topic)（\(viewModel.filteredArticles.count) 篇）")
+                                        .font(.system(size: 12.5, weight: .medium))
+                                    Spacer()
+                                    Button("清除筛选") { viewModel.selectTopic(nil) }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(AppTheme.accentBlue)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.horizontal, 4)
+                            }
+
+                            if viewModel.filteredArticles.isEmpty {
+                                Text("该主题下暂无文献")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(AppTheme.textTertiary)
+                                    .padding(16)
+                            } else {
+                                VStack(spacing: 0) {
+                                    ForEach(viewModel.filteredArticles) { article in
+                                        Button {
+                                            viewModel.chooseArticle(article)
+                                        } label: {
+                                            ArticleListCard(article: article, isSelected: viewModel.selectedArticle?.id == article.id)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .roundedPanel(padding: 0)
                             }
                         }
-                        .roundedPanel(padding: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -395,7 +423,7 @@ struct LibraryDetailView: View {
 
                 if isRealArticle {
                     ArticleReviewEditor(viewModel: viewModel, article: article)
-                        .id(article.id)
+                        .id(article.id + "|" + article.titleCN + "|" + article.abstractCN + "|" + article.topic + "|" + article.studyType + "|" + article.product + "|" + article.note)
                 }
 
                 DetailBlock(title: "标题") {
@@ -512,9 +540,25 @@ struct EnrichView: View {
                 }
 
                 HStack(alignment: .top, spacing: 14) {
-                    InfoPanel(title: "分类体系", text: "当前启用「PFA 图书馆主题树（四级）」与「PFA 研究类型（自定义）」两套方案，可按项目切换。", tags: ["四级菜单", "呈现方式字段", "备注字段"])
-                    InfoPanel(title: "可信度策略", text: "所有 AI 结果都与原始文献字段分层存储，不覆盖原始数据。低置信度结果自动进入待复核列表。", tags: [])
-                    InfoPanel(title: "客户自定义术语", text: "示例：研究类型包含“\(viewModel.customStudyTerms.joined(separator: "”“"))”。系统仅提供标准化机制，不强制替换客户术语。", tags: [])
+                    InfoPanel(
+                        title: "分类体系",
+                        text: viewModel.topicTree.isEmpty
+                            ? "尚未导入主题分类体系，可在设置中导入四级分类字典。"
+                            : "已加载主题分类体系，共 \(viewModel.topicTree.count) 个顶层主题。",
+                        tags: []
+                    )
+                    InfoPanel(
+                        title: "可信度策略",
+                        text: "所有 AI 结果与原始字段分层存储，不覆盖原始数据；低置信度结果自动进入待复核。",
+                        tags: []
+                    )
+                    InfoPanel(
+                        title: "LLM 模式",
+                        text: viewModel.apiKey.isEmpty
+                            ? "未配置 API Key：使用离线本地识别，未命中词典的译文标注“待人工校对”。"
+                            : "已配置 API Key：使用云端 LLM 进行翻译与主题分类。",
+                        tags: []
+                    )
                 }
             }
             .padding(24)
@@ -656,7 +700,13 @@ struct SearchContextDetailView: View {
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .textCase(.uppercase)
-            InfoPanel(title: "当前检索意图", text: "围绕 PFA 与房颤场景，筛选近 90 天、高影响因子、综述类文献，直接进入项目库。", tags: ["PubMed", "透明 query", "批量下载"])
+            InfoPanel(
+                title: "当前检索",
+                text: viewModel.searchTerms.isEmpty
+                    ? "输入检索词（多个用 AND 连接）后，将透明展示等价 PubMed 检索式，并支持排序与分页。"
+                    : "检索式：\(viewModel.displayedQuery)",
+                tags: viewModel.totalHits > 0 ? ["共 \(viewModel.totalHits) 条命中"] : []
+            )
         }
         .padding(20)
     }
@@ -691,11 +741,11 @@ struct InsightDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("项目洞察")
+                Text("工作台说明")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
-                InfoPanel(title: "为什么必须做成原生 macOS App", text: "你的场景本质是桌面生产力工具：需要强文件系统能力、本地模板、批量处理、可信存储和稳定导入导出。SwiftUI 原生实现会比 WebView 或网页壳更稳。", tags: ["SwiftUI", "SwiftData", "原生文件导入"])
+                InfoPanel(title: "完整工作流", text: "从 PubMed 检索或导入本地清单 → AI 加工（翻译 / 研究设计 / 主题分类 / IF 匹配）→ 人工复核 → 导出 Excel 与 onepage PPT。", tags: ["检索/导入", "AI 加工", "导出"])
             }
             .padding(20)
         }

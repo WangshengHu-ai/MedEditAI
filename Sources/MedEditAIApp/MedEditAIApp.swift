@@ -6,6 +6,6 @@ struct MedEditAIApp: App {
         WindowGroup("MedEditAI") {
             RootView()
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.automatic)
     }
 }

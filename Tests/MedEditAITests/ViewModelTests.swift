@@ -568,4 +568,81 @@ final class ViewModelTests: XCTestCase {
         XCTAssertFalse(vm.hasData)
         XCTAssertNotNil(vm.toastMessage)
     }
+
+    // MARK: - FP24 分类树主题过滤
+
+    private func draft(topic: String, title: String, pmid: String) -> ArticleDraft {
+        ArticleDraft(
+            topic: topic, titleEN: title, titleCN: "", abstractEN: "", abstractCN: "",
+            citation: "", authors: "", date: "", studyType: "", journal: "",
+            impactFactor: nil, quartile: nil, pmid: pmid, url: nil, confidence: 1.0,
+            product: "", evidence: "", note: ""
+        )
+    }
+
+    func testSelectTopicFiltersArticles() {
+        let vm = makeViewModel()
+        vm.replaceDrafts([
+            draft(topic: "主题A", title: "T1", pmid: "1"),
+            draft(topic: "主题B", title: "T2", pmid: "2")
+        ])
+        XCTAssertEqual(vm.filteredArticles.count, 2)   // 无筛选
+
+        vm.selectTopic("主题A")
+        XCTAssertEqual(vm.selectedTopic, "主题A")
+        XCTAssertEqual(vm.filteredArticles.count, 1)
+        XCTAssertEqual(vm.filteredArticles.first?.topic, "主题A")
+
+        vm.selectTopic("主题A")   // 再次点击取消
+        XCTAssertNil(vm.selectedTopic)
+        XCTAssertEqual(vm.filteredArticles.count, 2)
+    }
+
+    // MARK: - FP25 项目切换导航到工作台
+
+    func testChooseProjectNavigatesToDashboard() {
+        let vm = makeViewModel()
+        let first = vm.selectedProject
+        vm.addProject(name: "P2")            // 切到 P2
+        vm.navigate(to: .search)
+        XCTAssertEqual(vm.selectedSection, .search)
+        vm.chooseProject(first)              // 切回 first → 导航到工作台
+        XCTAssertEqual(vm.selectedSection, .dashboard)
+        XCTAssertEqual(vm.selectedProject.id, first.id)
+    }
+
+    // MARK: - FP26 示例数据不持久化
+
+    func testLoadSampleDataIsNotPersisted() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nopersist-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        vm1.loadSampleData()
+        XCTAssertTrue(vm1.hasData)
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertFalse(vm2.hasData)          // 示例数据未持久化，重开为空
+    }
+
+    // MARK: - FP27 AI 加工离线兜底（LLM 失败仍产出非空译文）
+
+    func testEnrichmentFallsBackToOfflineWhenLLMFails() async {
+        struct FailingLLM: LLMProviding {
+            func translate(_ request: TranslationRequest) async throws -> TranslationResult {
+                throw LLMError.notConfigured
+            }
+            func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
+                throw LLMError.notConfigured
+            }
+        }
+        let scheme = ClassificationScheme(name: "t", type: .topic, isHierarchical: true, items: [])
+        let service = EnrichmentService(llm: FailingLLM(), topicScheme: scheme, customStudyTerms: [], impactFactorByJournal: [:])
+        let record = PubMedRecord(
+            pmid: "1", title: "Pulsed field ablation study", abstract: "ablation",
+            authors: ["A"], journal: "HR", pubDate: "2026", doi: nil,
+            keywords: [], meshTerms: [], references: []
+        )
+        let result = await service.enrich(record: record)
+        XCTAssertFalse(result.titleCN.isEmpty)   // 离线兜底保证译文非空
+    }
 }
