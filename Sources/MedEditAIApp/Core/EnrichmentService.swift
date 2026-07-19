@@ -29,13 +29,18 @@ final class EnrichmentService {
         var titleCN = ""
         var abstractCN = ""
         let request = TranslationRequest(title: record.title, abstract: record.abstract, keywords: record.keywords)
-        let translation = (try? await llm.translate(request)) ?? (try? await Self.offline.translate(request))
+        var translation = try? await llm.translate(request)
+        if translation == nil {
+            translation = try? await Self.offline.translate(request)   // 云端失败 → 离线兜底
+        }
         titleCN = translation?.titleCN ?? ""
         abstractCN = translation?.abstractCN ?? ""
 
         let candidatePaths = ClassificationEngine.flattenPaths(in: topicScheme)
-        let classification = (try? await llm.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths))
-            ?? (try? await Self.offline.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths))
+        var classification = try? await llm.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths)
+        if classification == nil {
+            classification = try? await Self.offline.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths)
+        }
         let topicLeaf = classification.map { leaf(of: $0.topicPath) } ?? "未分类"
 
         let confidence = min(study.confidence, classification?.confidence ?? study.confidence)
