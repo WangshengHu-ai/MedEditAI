@@ -37,12 +37,15 @@ jobs:
             -destination 'platform=macOS' \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=YES 2>&1 | tee build.log
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" 2>&1 | tee build.log
           code=${PIPESTATUS[0]}
           echo "xcodebuild exit code = $code"
           echo "----- diagnostic summary -----"
-          grep -nE "\*\* (BUILD|TEST) (FAILED|SUCCEEDED) \*\*|error:|Testing failed:|Failing tests:|Test Case .* (failed|passed)|Code ?Sign|Provisioning|Sandbox|could not be launched|Unable to|No such|Assertion Failure" build.log | tail -n 50 | while IFS= read -r line; do echo "::error::${line}"; done
+          grep -nE "\*\* (BUILD|TEST) (FAILED|SUCCEEDED) \*\*|error:|Testing failed:|Failing tests:|Test Case .* (failed|passed)|Command .* failed|failed with a nonzero exit code|Provisioning|requires a provisioning|no signing certificate|errSec|Assertion Failure|could not be launched|Unable to" build.log | tail -n 50 | while IFS= read -r line; do echo "::error::${line}"; done
           exit $code
 
       - name: Upload test result bundle
