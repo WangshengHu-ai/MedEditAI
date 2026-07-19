@@ -16,6 +16,7 @@ enum ColumnMappingEngine {
         "pmid": ["PMID", "pmid", "pubmed id"],
         "url": ["原文链接", "url", "link", "source url"],
         "abstractLink": ["摘要/内容简介详情链接", "摘要链接", "abstract link"],
+        "keywords": ["关键词", "keywords", "key words", "关键字"],
         "topicCategories": ["主题分类", "topic categories", "categories"],
         "presentation": ["呈现方式", "presentation"],
         "note": ["文献备注", "备注", "note"]

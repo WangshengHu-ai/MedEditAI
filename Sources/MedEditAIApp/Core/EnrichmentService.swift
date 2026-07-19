@@ -55,7 +55,8 @@ final class EnrichmentService {
             confidence: confidence,
             product: ArticleProcessor.inferProduct(from: rawText),
             evidence: study.evidenceLevel,
-            note: confidence < 0.7 ? "低置信度，建议人工复核。" : "自动加工完成。"
+            note: confidence < 0.7 ? "低置信度，建议人工复核。" : "自动加工完成。",
+            keywords: record.keywords.isEmpty ? nil : record.keywords.joined(separator: ", ")
         )
     }
 

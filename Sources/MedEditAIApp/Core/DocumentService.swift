@@ -7,17 +7,19 @@ enum DocumentService {
     // MARK: - Import
 
     static func importArticles(from url: URL) throws -> [ArticleDraft] {
-        let rows: [[String]]
+        articles(from: try readRows(from: url))
+    }
+
+    /// 读取 xlsx/csv 为二维字符串数组（供分析与映射确认复用）。
+    static func readRows(from url: URL) throws -> [[String]] {
         switch url.pathExtension.lowercased() {
         case "xlsx":
-            rows = try XLSXReader.read(url: url)
+            return try XLSXReader.read(url: url)
         case "csv":
-            let text = try String(contentsOf: url, encoding: .utf8)
-            rows = CSVEngine.parse(text)
+            return CSVEngine.parse(try String(contentsOf: url, encoding: .utf8))
         default:
             throw ArchiveError.toolFailed("不支持的文件类型：\(url.pathExtension)")
         }
-        return articles(from: rows)
     }
 
     static func articles(from rows: [[String]]) -> [ArticleDraft] {
@@ -27,9 +29,16 @@ enum DocumentService {
 
         let headers = rows[headerIndex]
         let mapping = ColumnMappingEngine.buildImportMapping(from: headers, requiredFields: canonicalRequired)
+        return articles(fromRows: rows, headerIndex: headerIndex, mapping: mapping)
+    }
+
+    /// 使用明确的「源列名 → 规范字段」映射生成草稿（供确认界面使用）。
+    static func articles(fromRows rows: [[String]], headerIndex: Int, mapping: [String: String]) -> [ArticleDraft] {
+        guard rows.indices.contains(headerIndex) else { return [] }
+        let headers = rows[headerIndex]
 
         var drafts: [ArticleDraft] = []
-        for row in rows[(headerIndex + 1)...] {
+        for row in rows.dropFirst(headerIndex + 1) {
             guard row.contains(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { continue }
             var record: [String: String] = [:]
             for (columnIndex, header) in headers.enumerated() where columnIndex < row.count {
@@ -62,7 +71,8 @@ enum DocumentService {
             confidence: 1.0,
             product: "",
             evidence: "",
-            note: "由导入文件创建"
+            note: "由导入文件创建",
+            keywords: record["keywords"]
         )
     }
 

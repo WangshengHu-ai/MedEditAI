@@ -889,3 +889,125 @@ struct ArticleReviewEditor: View {
         .roundedPanel()
     }
 }
+
+/// 导入映射确认/调整界面：展示分析结果，允许用户逐列调整“源列 → 底层字段”映射后再导入。
+struct ImportMappingSheet: View {
+    @ObservedObject var viewModel: AppViewModel
+    let analysis: ImportAnalysis
+    @State private var proposals: [ColumnProposal]
+
+    init(viewModel: AppViewModel, analysis: ImportAnalysis) {
+        self.viewModel = viewModel
+        self.analysis = analysis
+        _proposals = State(initialValue: analysis.proposals)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            if analysis.kind == .classification {
+                classificationContent
+            } else {
+                articleContent
+            }
+            Divider()
+            footer
+        }
+        .frame(width: 640, height: 560)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(analysis.kind == .classification ? "确认分类字典导入" : "确认导入字段映射")
+                .font(.system(size: 17, weight: .bold))
+            Text(analysis.kind == .classification
+                 ? "已识别为四级主题分类字典，将构建 \(analysis.classificationPathCount) 条主题路径。"
+                 : "已分析文件结构并给出字段映射建议，请确认或调整后导入（约 \(analysis.articleCountEstimate) 篇）。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+    }
+
+    private var articleContent: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("源列 / 示例值")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("映射到底层字段")
+                        .frame(width: 200, alignment: .leading)
+                }
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+
+                ForEach($proposals) { $proposal in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(proposal.sourceHeader.isEmpty ? "（空列名）" : proposal.sourceHeader)
+                                .font(.system(size: 13, weight: .semibold))
+                            if !proposal.sample.isEmpty {
+                                Text(proposal.sample)
+                                    .font(.system(size: 11.5))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Picker("", selection: $proposal.field) {
+                            ForEach(viewModel.canonicalFieldOptions) { option in
+                                Text(option.label).tag(option.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 200)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    Divider().padding(.leading, 20)
+                }
+            }
+        }
+    }
+
+    private var classificationContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("四级主题分类字典", systemImage: "list.bullet.indent")
+                .font(.system(size: 14, weight: .semibold))
+            Text("列结构：主题 / 次级菜单 / 三级菜单 / 四级菜单（+ 呈现方式 / 备注）")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+            Text("将构建 \(analysis.classificationPathCount) 条主题路径并应用到当前项目的分类体系。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("取消") { viewModel.cancelImport() }
+                .accessibilityIdentifier("btn-cancel-import")
+            Spacer()
+            Button("确认导入") {
+                if analysis.kind == .classification {
+                    viewModel.confirmClassificationImport()
+                } else {
+                    viewModel.confirmArticleImport(proposals: proposals)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.accent)
+            .accessibilityIdentifier("btn-confirm-import")
+        }
+        .padding(20)
+    }
+}

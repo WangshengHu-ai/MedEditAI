@@ -31,6 +31,7 @@
 		2A1B0000000000000000B008 /* EnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F008 /* EnrichmentService.swift */; };
 		2A1B0000000000000000B009 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F009 /* Persistence.swift */; };
 		2A1B0000000000000000B010 /* DocumentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F010 /* DocumentService.swift */; };
+		2A1D00000000000000000001 /* ImportAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1D00000000000000000011 /* ImportAnalyzer.swift */; };
 		2A1A0000000000000000000F /* CoreServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000027 /* CoreServicesTests.swift */; };
 		2A1B0000000000000000BA01 /* CoreFunctionalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */; };
 		2A1C00000000000000000008 /* MedEditAIUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1C00000000000000000018 /* MedEditAIUITests.swift */; };
@@ -63,6 +64,7 @@
 		2A1B0000000000000000F008 /* EnrichmentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnrichmentService.swift; sourceTree = "<group>"; };
 		2A1B0000000000000000F009 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		2A1B0000000000000000F010 /* DocumentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentService.swift; sourceTree = "<group>"; };
+		2A1D00000000000000000011 /* ImportAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportAnalyzer.swift; sourceTree = "<group>"; };
 		2A1A00000000000000000027 /* CoreServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreServicesTests.swift; sourceTree = "<group>"; };
 		2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFunctionalTests.swift; sourceTree = "<group>"; };
 		2A1A00000000000000000028 /* MedEditAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = MedEditAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -115,6 +117,7 @@
 			2A1B0000000000000000F008 /* EnrichmentService.swift */,
 			2A1B0000000000000000F009 /* Persistence.swift */,
 			2A1B0000000000000000F010 /* DocumentService.swift */,
+			2A1D00000000000000000011 /* ImportAnalyzer.swift */,
 		); path = Core; sourceTree = "<group>"; };
 		2A1A00000000000000000037 /* MedEditAITests */ = {isa = PBXGroup; children = (
 			2A1A00000000000000000027 /* CoreServicesTests.swift */,
@@ -203,6 +206,7 @@
 			2A1B0000000000000000B008 /* EnrichmentService.swift in Sources */,
 			2A1B0000000000000000B009 /* Persistence.swift in Sources */,
 			2A1B0000000000000000B010 /* DocumentService.swift in Sources */,
+			2A1D00000000000000000001 /* ImportAnalyzer.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		2A1C00000000000000000044 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 			2A1C00000000000000000008 /* MedEditAIUITests.swift in Sources */,

@@ -34,6 +34,10 @@ final class AppViewModel: ObservableObject {
     @Published var apiKey: String = ""
     @Published var pptTemplateURL: URL?
 
+    // MARK: - Import mapping confirmation
+    @Published var pendingImport: ImportAnalysis?
+    let canonicalFieldOptions = ImportAnalyzer.canonicalFields
+
     let customStudyTerms = ["综述", "社论", "动物实验", "土豆模型"]
 
     // MARK: - Static config (navigation & previews, not result data)
@@ -440,14 +444,41 @@ final class AppViewModel: ObservableObject {
     func importDocument() {
         guard let url = openPanel(extensions: ["xlsx", "csv"]) else { return }
         do {
-            let imported = try DocumentService.importArticles(from: url)
-            guard !imported.isEmpty else { showToast("未从文件解析到文献"); return }
-            let recognized = imported.map(autoRecognize(draft:))
-            replaceDrafts(recognized, toast: "导入成功：\(recognized.count) 篇（已自动识别字段）")
+            let rows = try DocumentService.readRows(from: url)
+            let analysis = ImportAnalyzer.analyze(rows: rows)
+            guard analysis.kind != .unknown else {
+                showToast("无法识别文件结构：需包含标题列或四级分类列")
+                return
+            }
+            // 分析完成 → 弹出确认界面，用户确认/调整映射
+            pendingImport = analysis
         } catch {
             showToast("导入失败：\(error.localizedDescription)")
         }
     }
+
+    /// 用户确认（可能已调整）文献列映射后，应用生成草稿。
+    func confirmArticleImport(proposals: [ColumnProposal]) {
+        guard let analysis = pendingImport else { return }
+        let imported = ImportAnalyzer.articles(from: analysis, proposals: proposals)
+        pendingImport = nil
+        guard !imported.isEmpty else {
+            showToast("按当前映射未解析到文献（需至少映射“标题（英文）”列）")
+            return
+        }
+        let recognized = imported.map(autoRecognize(draft:))
+        replaceDrafts(recognized, toast: "导入成功：\(recognized.count) 篇（映射已确认）")
+    }
+
+    /// 用户确认分类字典导入。
+    func confirmClassificationImport() {
+        guard let analysis = pendingImport, analysis.kind == .classification else { return }
+        let count = applyClassification(rows: Array(analysis.rows[analysis.headerIndex...]))
+        pendingImport = nil
+        showToast("已导入分类字典：\(count) 条路径")
+    }
+
+    func cancelImport() { pendingImport = nil }
 
     /// 用新的文献集合替换当前库（导入/检索共用；可单元测试）。
     func replaceDrafts(_ newDrafts: [ArticleDraft], toast: String? = nil) {
@@ -628,6 +659,7 @@ final class AppViewModel: ObservableObject {
         if !enriched.evidence.isEmpty { result.evidence = enriched.evidence }
         result.confidence = enriched.confidence
         result.note = enriched.note
+        if let kw = enriched.keywords, !kw.isEmpty { result.keywords = kw }
         return result
     }
 
@@ -650,7 +682,8 @@ final class AppViewModel: ObservableObject {
             confidence: article.confidence == .high ? 0.95 : article.confidence == .medium ? 0.78 : 0.6,
             product: article.product,
             evidence: article.evidence,
-            note: article.note
+            note: article.note,
+            keywords: article.keywords.isEmpty ? nil : article.keywords
         )
     }
 
@@ -663,7 +696,7 @@ final class AppViewModel: ObservableObject {
             journal: draft.journal,
             pubDate: draft.date,
             doi: nil,
-            keywords: [],
+            keywords: (draft.keywords ?? "").split(whereSeparator: { $0 == "," || $0 == "；" || $0 == ";" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
             meshTerms: [],
             references: []
         )
@@ -689,7 +722,8 @@ final class AppViewModel: ObservableObject {
             confidence: level(draft.confidence),
             product: draft.product,
             evidence: draft.evidence,
-            note: draft.note
+            note: draft.note,
+            keywords: draft.keywords ?? ""
         )
     }
 

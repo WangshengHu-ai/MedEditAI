@@ -372,6 +372,19 @@ struct LibraryDetailView: View {
 
     private var isRealArticle: Bool { article.id != "placeholder" && viewModel.hasData }
 
+    private var metadataPairs: [(String, String)] {
+        var pairs: [(String, String)] = [
+            ("作者", article.authors),
+            ("日期", article.date),
+            ("研究类型", article.studyType),
+            ("期刊", article.journal),
+            ("影响因子", "\(article.impactFactor) · \(article.quartile)"),
+            ("PMID", article.pmid)
+        ]
+        if !article.keywords.isEmpty { pairs.append(("关键词", article.keywords)) }
+        return pairs
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -398,14 +411,7 @@ struct LibraryDetailView: View {
                 }
 
                 DetailBlock(title: "元数据") {
-                    DetailKeyValueGrid(pairs: [
-                        ("作者", article.authors),
-                        ("日期", article.date),
-                        ("研究类型", article.studyType),
-                        ("期刊", article.journal),
-                        ("影响因子", "\(article.impactFactor) · \(article.quartile)"),
-                        ("PMID", article.pmid)
-                    ])
+                    DetailKeyValueGrid(pairs: metadataPairs)
                 }
 
                 DetailBlock(title: "摘要中译") {

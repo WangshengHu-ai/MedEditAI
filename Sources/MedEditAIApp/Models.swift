@@ -122,6 +122,7 @@ struct Article: Identifiable, Hashable {
     let product: String
     let evidence: String
     let note: String
+    var keywords: String = ""
 }
 
 struct MappingPair: Identifiable, Hashable {

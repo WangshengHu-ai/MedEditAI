@@ -34,6 +34,9 @@ struct RootView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: viewModel.selectedSection)
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: viewModel.selectedArticle)
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: viewModel.toastMessage)
+        .sheet(item: $viewModel.pendingImport) { analysis in
+            ImportMappingSheet(viewModel: viewModel, analysis: analysis)
+        }
     }
 }
 

@@ -81,6 +81,7 @@ struct ArticleDraft: Hashable, Codable {
     var product: String
     var evidence: String
     var note: String
+    var keywords: String?
 }
 
 struct PubMedRecord: Hashable, Codable {

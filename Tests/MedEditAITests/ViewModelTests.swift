@@ -464,4 +464,108 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(recognized.studyType, "随机对照试验")   // 识别研究设计
         XCTAssertEqual(recognized.product, "PFA")            // 识别产品
     }
+
+    // MARK: - FP23 导入映射分析与用户确认
+
+    func testAnalyzeDetectsArticleMappingWithSample() {
+        let rows = [
+            ["标题", "自定义列X"],
+            ["The Biophysics of RF Ablation", "手动中文摘要"]
+        ]
+        let analysis = ImportAnalyzer.analyze(rows: rows)
+        XCTAssertEqual(analysis.kind, .articles)
+        let titleProposal = analysis.proposals.first { $0.sourceHeader == "标题" }
+        XCTAssertEqual(titleProposal?.field, "titleEN")           // 自动映射标题
+        XCTAssertEqual(titleProposal?.sample, "The Biophysics of RF Ablation")  // 带示例值
+        let customProposal = analysis.proposals.first { $0.sourceHeader == "自定义列X" }
+        XCTAssertEqual(customProposal?.field, "")                 // 未识别列默认忽略
+    }
+
+    func testAnalyzeDetectsClassificationDictionary() {
+        let rows = [
+            ["主题", "次级菜单", "三级菜单", "四级菜单", "呈现方式", "文献备注"],
+            ["Science of PFA", "原理", "史", "叶子A", "PPT", "备注1"],
+            ["Science of PFA", "原理", "史", "叶子B", "PPT", "备注2"]
+        ]
+        let analysis = ImportAnalyzer.analyze(rows: rows)
+        XCTAssertEqual(analysis.kind, .classification)
+        XCTAssertEqual(analysis.classificationPathCount, 2)
+    }
+
+    func testAnalyzeUnknownForUnrecognizedColumns() {
+        let analysis = ImportAnalyzer.analyze(rows: [["颜色", "尺寸"], ["红", "大"]])
+        XCTAssertEqual(analysis.kind, .unknown)
+    }
+
+    func testConfirmArticleImportAppliesAdjustedMapping() {
+        let rows = [
+            ["标题", "自定义列X"],
+            ["T1", "手动中文摘要"]
+        ]
+        let analysis = ImportAnalyzer.analyze(rows: rows)
+        var proposals = analysis.proposals
+        // 用户把“自定义列X”改映射为中文摘要
+        let idx = proposals.firstIndex { $0.sourceHeader == "自定义列X" }!
+        proposals[idx].field = "abstractCN"
+        let drafts = ImportAnalyzer.articles(from: analysis, proposals: proposals)
+        XCTAssertEqual(drafts.count, 1)
+        XCTAssertEqual(drafts[0].titleEN, "T1")
+        XCTAssertEqual(drafts[0].abstractCN, "手动中文摘要")
+    }
+
+    func testImportMapsKeywordsColumn() {
+        let rows = [
+            ["标题", "关键词"],
+            ["T1", "ablation; PFA"]
+        ]
+        let analysis = ImportAnalyzer.analyze(rows: rows)
+        let kw = analysis.proposals.first { $0.sourceHeader == "关键词" }
+        XCTAssertEqual(kw?.field, "keywords")
+        let drafts = ImportAnalyzer.articles(from: analysis, proposals: analysis.proposals)
+        XCTAssertEqual(drafts.first?.keywords, "ablation; PFA")
+    }
+
+    func testConfirmArticleImportReplacesDataAndClearsPending() {
+        let vm = makeViewModel()
+        vm.pendingImport = ImportAnalyzer.analyze(rows: [["标题", "作者"], ["T1", "A"], ["T2", "B"]])
+        XCTAssertNotNil(vm.pendingImport)
+        vm.confirmArticleImport(proposals: vm.pendingImport!.proposals)
+        XCTAssertNil(vm.pendingImport)
+        XCTAssertEqual(vm.articleCount, 2)
+        XCTAssertEqual(vm.articles.first?.titleEN, "T1")
+    }
+
+    func testConfirmClassificationImportBuildsTreeAndClearsPending() {
+        let vm = makeViewModel()
+        vm.pendingImport = ImportAnalyzer.analyze(rows: [
+            ["主题", "次级菜单", "三级菜单", "四级菜单"],
+            ["Science of PFA", "原理", "史", "叶子A"],
+            ["Science of PFA", "原理", "史", "叶子B"]
+        ])
+        XCTAssertEqual(vm.pendingImport?.kind, .classification)
+        vm.confirmClassificationImport()
+        XCTAssertNil(vm.pendingImport)
+        XCTAssertFalse(vm.topicTree.isEmpty)
+    }
+
+    func testCancelImportClearsPending() {
+        let vm = makeViewModel()
+        vm.pendingImport = ImportAnalyzer.analyze(rows: [["标题"], ["T1"]])
+        XCTAssertNotNil(vm.pendingImport)
+        vm.cancelImport()
+        XCTAssertNil(vm.pendingImport)
+    }
+
+    func testConfirmArticleImportWithNoTitleMappingShowsToast() {
+        let vm = makeViewModel()
+        let analysis = ImportAnalyzer.analyze(rows: [["标题", "作者"], ["T1", "A"]])
+        // 用户把标题列也改成忽略 -> 无法解析
+        var proposals = analysis.proposals
+        for i in proposals.indices { proposals[i].field = "" }
+        vm.pendingImport = analysis
+        vm.confirmArticleImport(proposals: proposals)
+        XCTAssertNil(vm.pendingImport)
+        XCTAssertFalse(vm.hasData)
+        XCTAssertNotNil(vm.toastMessage)
+    }
 }

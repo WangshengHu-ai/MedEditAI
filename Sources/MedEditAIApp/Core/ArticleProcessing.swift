@@ -31,7 +31,8 @@ enum ArticleProcessor {
             confidence: study.confidence,
             product: inferProduct(from: rawText),
             evidence: study.evidenceLevel,
-            note: "自动加工结果，可在详情页人工修正。"
+            note: "自动加工结果，可在详情页人工修正。",
+            keywords: record.keywords.isEmpty ? nil : record.keywords.joined(separator: ", ")
         )
     }
 
