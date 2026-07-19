@@ -282,6 +282,7 @@ final class ViewModelTests: XCTestCase {
             )
         ]
         let vm = makeViewModel(pubmed: MockPubMed(ids: ["1"], records: records))
+        vm.searchText = "ablation"
         await vm.runSearch()
         XCTAssertTrue(vm.hasData)
         XCTAssertEqual(vm.articleCount, 1)
@@ -290,6 +291,7 @@ final class ViewModelTests: XCTestCase {
 
     func testRunSearchWithEmptyResultsKeepsEmptyAndToasts() async {
         let vm = makeViewModel(pubmed: MockPubMed(ids: [], records: []))
+        vm.searchText = "ablation"
         await vm.runSearch()
         XCTAssertFalse(vm.hasData)
         XCTAssertEqual(vm.toastMessage, "未找到结果")
@@ -300,6 +302,7 @@ final class ViewModelTests: XCTestCase {
     func testSearchReportsTotalHitsAndFirstPage() async {
         let ids = (1...60).map(String.init)
         let vm = makeViewModel(pubmed: MockPubMed(ids: ids, records: ids.map { record(pmid: $0) }))
+        vm.searchText = "ablation"
         await vm.runSearch()
         XCTAssertEqual(vm.totalHits, 60)
         XCTAssertEqual(vm.currentPage, 0)
@@ -313,6 +316,7 @@ final class ViewModelTests: XCTestCase {
         let ids = (1...60).map(String.init)
         let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
         let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
         await vm.runSearch()
         await vm.nextPage()
         XCTAssertEqual(vm.currentPage, 1)
@@ -331,6 +335,7 @@ final class ViewModelTests: XCTestCase {
         let ids = (1...60).map(String.init)
         let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
         let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
         await vm.runSearch()
         await vm.nextPage()
         XCTAssertEqual(vm.currentPage, 1)
