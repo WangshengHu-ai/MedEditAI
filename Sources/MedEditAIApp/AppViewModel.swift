@@ -12,7 +12,6 @@ final class AppViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var yearFrom: Int = 2024
     @Published var sortOrder: PubMedSort = .bestMatch
-    @Published var enabledFilters: Set<String> = []
     @Published var tasks: [ProcessingTask] = SampleData.processingTasks
     @Published var progress: Double = 0.0
     @Published var toastMessage: String?
@@ -49,7 +48,6 @@ final class AppViewModel: ObservableObject {
     let importMappings = SampleData.importMappings
     let exportMappings = SampleData.exportMappings
     let pptMappings = SampleData.pptMappings
-    let searchFilters = SampleData.searchFilters
     let sortOptions = PubMedSort.allCases
 
     // MARK: - Services
@@ -306,10 +304,6 @@ final class AppViewModel: ObservableObject {
         showToast("\(tasks[index].title)已\(tasks[index].isEnabled ? "启用" : "关闭")")
     }
 
-    func toggleFilter(_ filter: String) {
-        if enabledFilters.contains(filter) { enabledFilters.remove(filter) } else { enabledFilters.insert(filter) }
-    }
-
     // MARK: - Search pagination state
     var totalPages: Int {
         guard totalHits > 0 else { return 0 }
@@ -369,6 +363,45 @@ final class AppViewModel: ObservableObject {
             showToast("检索完成：第 \(page + 1)/\(max(totalPages, 1)) 页，共 \(totalHits) 条")
         } catch {
             showToast("检索失败：\(error.localizedDescription)")
+        }
+    }
+
+    func batchImport(all: Bool) async {
+        guard !isBusy, !searchTerms.isEmpty else { return }
+        if all {
+            isBusy = true
+            progress = 0
+            showToast("正在获取所有检索结果（限前100条）…")
+            defer { isBusy = false }
+            do {
+                let limit = 100
+                let result = try await pubmed.search(query: displayedQuery, sort: sortOrder, retstart: 0, retmax: limit)
+                totalHits = result.total
+                currentPage = 0
+                guard !result.ids.isEmpty else {
+                    replaceDrafts([])
+                    showToast("未找到结果")
+                    return
+                }
+                let records = try await pubmed.fetch(pmids: result.ids)
+                let recognized = records.map(autoRecognize(record:))
+                replaceDrafts(recognized)
+                showToast("批量入库完成：共 \(records.count) 条")
+                selectedSection = .dashboard
+            } catch {
+                showToast("批量下载失败：\(error.localizedDescription)")
+            }
+        } else {
+            guard !selectedForExport.isEmpty else {
+                showToast("请先勾选需要入库的文献")
+                return
+            }
+            let keep = drafts.enumerated().filter { i, d in
+                selectedForExport.contains(draftID(d, index: i))
+            }.map { $0.element }
+            replaceDrafts(keep)
+            showToast("已保留提取勾选的 \(keep.count) 条文献")
+            selectedSection = .dashboard
         }
     }
 

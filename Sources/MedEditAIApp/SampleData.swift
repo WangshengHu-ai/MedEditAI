@@ -149,8 +149,6 @@ enum SampleData {
         )
     ]
 
-    static let searchFilters = ["近 90 天", "房颤", "综述", "高影响因子", "待复核", "已导出"]
-
     static let importMappings: [MappingPair] = [
         .init(source: "序号", target: "sequence"),
         .init(source: "标题", target: "titleEN"),

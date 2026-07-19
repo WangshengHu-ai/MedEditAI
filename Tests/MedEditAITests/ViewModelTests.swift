@@ -178,17 +178,6 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(query.contains("2024:3000[pdat]"))
     }
 
-    // MARK: - FP7 检索过滤器开关
-
-    func testToggleFilterAddsAndRemoves() {
-        let vm = makeViewModel()
-        XCTAssertFalse(vm.enabledFilters.contains("综述"))
-        vm.toggleFilter("综述")
-        XCTAssertTrue(vm.enabledFilters.contains("综述"))
-        vm.toggleFilter("综述")
-        XCTAssertFalse(vm.enabledFilters.contains("综述"))
-    }
-
     // MARK: - FP8 加工任务开关
 
     func testToggleTaskFlipsEnabledState() {

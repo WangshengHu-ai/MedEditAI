@@ -174,6 +174,7 @@ struct DashboardView: View {
 
 struct SearchView: View {
     @ObservedObject var viewModel: AppViewModel
+    @State private var showingBatchOptions = false
 
     var body: some View {
         ScrollView {
@@ -183,12 +184,23 @@ struct SearchView: View {
                         Button("清空检索词") { viewModel.searchText = "" }
                             .disabled(viewModel.searchText.isEmpty)
                         Button("批量检索入库") {
-                            Task { await viewModel.runSearch() }
+                            showingBatchOptions = true
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
                         .disabled(viewModel.isBusy || viewModel.searchTerms.isEmpty)
                         .accessibilityIdentifier("btn-run-search")
+                        .confirmationDialog("批量下载入库", isPresented: $showingBatchOptions) {
+                            Button("下载所有检索结果（限前100条）") {
+                                Task { await viewModel.batchImport(all: true) }
+                            }
+                            Button("仅保留勾选结果") {
+                                Task { await viewModel.batchImport(all: false) }
+                            }
+                            Button("取消", role: .cancel) { }
+                        } message: {
+                            Text("即将把检索结果写入当前项目的文献库。")
+                        }
                     }
                 }
 
@@ -241,14 +253,6 @@ struct SearchView: View {
                         .frame(width: 130)
                     }
                     Spacer()
-                }
-
-                FlowLayout(spacing: 8) {
-                    ForEach(viewModel.searchFilters, id: \.self) { filter in
-                        FilterChip(text: filter, isOn: viewModel.enabledFilters.contains(filter)) {
-                            viewModel.toggleFilter(filter)
-                        }
-                    }
                 }
 
                 Text("PubMed query: \(viewModel.displayedQuery)")
