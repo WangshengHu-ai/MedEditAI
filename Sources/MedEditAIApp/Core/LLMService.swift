@@ -30,6 +30,9 @@ protocol LLMProviding {
     /// 研究类型（study design）AI 推断：优先从 `candidateTerms`（用户自定义词条）中选择；
     /// 若未提供候选或无法判断，则自行推断或返回空字符串。
     func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult
+    /// 执行用户自定义 AI 加工任务：`promptTemplate` 支持 {title}/{abstract}/{keywords} 占位符，
+    /// 返回模型的原始文本输出（不强制 JSON），供写入 `ArticleDraft.customFields`。
+    func runCustomTask(promptTemplate: String, title: String, abstract: String, keywords: [String]) async throws -> String
 }
 
 enum LLMError: Error, LocalizedError {
@@ -152,6 +155,17 @@ struct OpenAICompatibleLLM: LLMProviding {
             throw LLMError.badResponse(content)
         }
         return result
+    }
+
+    /// 用户自定义加工任务：直接把用户填写的 prompt 模板（替换占位符后）发给模型，返回原始文本，不强制 JSON 结构。
+    func runCustomTask(promptTemplate: String, title: String, abstract: String, keywords: [String]) async throws -> String {
+        guard !apiKey.isEmpty else { throw LLMError.notConfigured }
+        let prompt = promptTemplate
+            .replacingOccurrences(of: "{title}", with: title)
+            .replacingOccurrences(of: "{abstract}", with: abstract)
+            .replacingOccurrences(of: "{keywords}", with: keywords.joined(separator: "; "))
+        let content = try await complete(system: "You are a precise medical editing assistant. Never fabricate.", prompt: prompt)
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func complete(system: String, prompt: String) async throws -> String {

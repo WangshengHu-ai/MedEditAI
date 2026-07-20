@@ -360,6 +360,8 @@ body {
 .q-done { color: var(--ok); }
 .q-run { color: var(--accent); }
 .q-wait { color: var(--text-3); }
+.q-pause { color: var(--warn); }
+.q-fail { color: var(--danger); }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

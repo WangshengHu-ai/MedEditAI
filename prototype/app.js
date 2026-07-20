@@ -10,9 +10,13 @@ const state = {
   selectedArticleId: 'a1',
   selectedSlide: 1,
   processing: false,
+  processingPaused: false,
+  processingDone: false,
   progress: 0,
   queueTick: 0,
   pageSize: 25,
+  yearFrom: null, // 不指定：不限制起始年份
+  showLowConfidenceOnly: false,
   selectedForExport: new Set(['a1', 'a2', 'a3']),
   tasks: {
     translate: true,
@@ -21,7 +25,32 @@ const state = {
     products: true,
     metrics: true,
   },
+  customTasks: [
+    { title: '风险分层', output: 'riskLevel', prompt: '请基于{title}和{abstract}输出风险分层结论。' },
+  ],
+  pptTemplate: {
+    name: 'MedEditAI Onepage',
+    accentHex: '#0E9F9F',
+    metadataBg: '#EAF8F7',
+    ctaText: '点击查看原文链接',
+    abstractPrefix: '摘要：',
+    citationPrefix: '参考文献：',
+    disclaimerText: '*版权问题暂不提供直接下载，如有学术交流需要，请联系内部人员',
+    fontFamily: 'PingFang SC',
+    topicFontSize: 18,
+    titleFontSize: 22,
+    subtitleFontSize: 16,
+    bodyFontSize: 12,
+    metadataFontSize: 11,
+    captionFontSize: 9,
+  },
 };
+
+// 与 Swift 端 SlidePreviewCard 一致的比例缩放：字号变化时，预览按比例实时更新。
+function pptFontPx(basePreviewPx, templateValue, templateBase) {
+  const ratio = templateBase > 0 ? (templateValue / templateBase) : 1;
+  return Math.max(6, basePreviewPx * ratio).toFixed(1);
+}
 
 const data = {
   stats: {
@@ -309,7 +338,7 @@ function renderDashboard() {
           <div class="card stat">
             <div class="stat-label">${icon('<path d="M4 4h16v12H4zM8 20h8"/>')}模板数</div>
             <div class="stat-value">${data.stats.templates}</div>
-            <div class="stat-delta">含 onepage 客户模板</div>
+            <div class="stat-delta">含产品内可编辑 onepage 模板</div>
           </div>
         </div>
 
@@ -333,7 +362,7 @@ function renderDashboard() {
             <div class="quick-ico" style="background: linear-gradient(145deg, #f97316, #fb923c);">${icon('<path d="M3 4h18v12H3zM8 20h8M12 16v4"/>')}</div>
             <div>
               <div class="quick-title">生成 onepage 交付物</div>
-              <div class="quick-desc">使用客户自备 .pptx 模板和自定义 Excel 导出模板</div>
+              <div class="quick-desc">使用产品内可编辑的 PPT 模板和自定义 Excel 导出模板</div>
             </div>
           </div>
         </div>
@@ -369,6 +398,7 @@ function renderDashboard() {
 }
 
 function renderSearch() {
+  const article = getSelectedArticle();
   return `
     <section class="view">
       <div class="page-head">
@@ -401,7 +431,7 @@ function renderSearch() {
         <div class="flex items-center gap-16 mt-16">
           <div class="flex items-center gap-8">
             <span class="muted" style="font-size:12.5px;">起始年份</span>
-            <input type="number" class="field-input" style="width: 130px; font-size:13px;" value="2024" />
+            <input type="number" class="field-input" placeholder="不限" style="width: 130px; font-size:13px;" value="${state.yearFrom ?? ''}" data-action="yearFrom" />
           </div>
           <div class="flex items-center gap-8">
             <span class="muted" style="font-size:12.5px;">排序</span>
@@ -414,37 +444,64 @@ function renderSearch() {
           <div class="flex items-center gap-8">
             <span class="muted" style="font-size:12.5px;">每页条数</span>
             <select class="field-input" data-action="pageSize" style="width: 110px; font-size:13px;">
-              ${[10, 25, 50, 100].map(n => `<option value="${n}" ${state.pageSize === n ? 'selected' : ''}>${n} 条/页</option>`).join('')}
+              ${[10, 25, 50, 100, 200, 500, 1000].map(n => `<option value="${n}" ${state.pageSize === n ? 'selected' : ''}>${n} 条/页</option>`).join('')}
             </select>
           </div>
         </div>
         
         <div class="query-str mt-16">
-          <b>PubMed query:</b> ("pulsed field ablation"[Title/Abstract] OR PFA[Title/Abstract]) AND ("atrial fibrillation"[Title/Abstract] OR AF[Title/Abstract]) AND (2024:3000[pdat])
+          <b>PubMed query:</b> ("pulsed field ablation"[Title/Abstract] OR PFA[Title/Abstract]) AND ("atrial fibrillation"[Title/Abstract] OR AF[Title/Abstract])${state.yearFrom ? ` AND (${state.yearFrom}:3000[pdat])` : ''}
         </div>
 
-        <div class="card mt-24" style="overflow:hidden;">
-          <div class="tbl-head" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;">
-            <div><div class="check ${data.articles.every(a => state.selectedForExport.has(a.id)) ? 'on' : ''}" data-select-all><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
-            <div>标题</div>
-            <div>作者</div>
-            <div>研究类型</div>
-            <div>期刊</div>
-            <div>IF</div>
-          </div>
-          ${data.articles.map((a, idx) => `
-            <div class="tbl-row" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;" data-select-row="${a.id}">
-              <div><div class="check ${state.selectedForExport.has(a.id) ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
-              <div>
-                <div class="t-title">${a.titleEn}</div>
-                <div class="t-sub">${a.titleCn}</div>
-              </div>
-              <div class="t-sub">${a.authors}</div>
-              <div><span class="tag tag-type">${a.studyType}</span></div>
-              <div class="t-sub">${a.journal}</div>
-              <div><span class="tag tag-if">${a.if}</span></div>
+        <div class="grid" style="grid-template-columns: 1.3fr .9fr; align-items:start; gap:16px; margin-top:24px;">
+          <div class="card" style="overflow:hidden;">
+            <div class="tbl-head" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;">
+              <div><div class="check ${data.articles.every(a => state.selectedForExport.has(a.id)) ? 'on' : ''}" data-select-all><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
+              <div>标题</div>
+              <div>作者</div>
+              <div>研究类型</div>
+              <div>期刊</div>
+              <div>IF</div>
             </div>
-          `).join('')}
+            ${data.articles.map(a => `
+              <div class="tbl-row ${a.id === state.selectedArticleId ? 'selected' : ''}" style="grid-template-columns: 36px 1.8fr .8fr .6fr .8fr .55fr;" data-article="${a.id}">
+                <div><div class="check ${state.selectedForExport.has(a.id) ? 'on' : ''}" data-select-row="${a.id}"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></div></div>
+                <div>
+                  <div class="t-title">${a.titleEn}</div>
+                  <div class="t-sub">${a.titleCn}</div>
+                </div>
+                <div class="t-sub">${a.authors}</div>
+                <div><span class="tag tag-type">${a.studyType}</span></div>
+                <div class="t-sub">${a.journal}</div>
+                <div><span class="tag tag-if">${a.if}</span></div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="card" style="padding:16px;">
+            <div class="section-title" style="margin:0 0 10px;">右侧完整文章信息</div>
+            <div class="detail-block">
+              <div class="detail-label">标题</div>
+              <div class="bi">
+                <div class="bi-en">${article.titleEn}</div>
+                <div class="bi-cn">${article.titleCn}</div>
+              </div>
+            </div>
+            <div class="detail-block">
+              <div class="detail-label">摘要中译</div>
+              <div class="bi-cn">${article.abstractCn}</div>
+            </div>
+            <div class="detail-block">
+              <div class="detail-label">完整元数据</div>
+              <dl class="kv">
+                <dt>作者</dt><dd>${article.authors}</dd>
+                <dt>日期</dt><dd>${article.date}</dd>
+                <dt>研究类型</dt><dd>${article.studyType}</dd>
+                <dt>期刊</dt><dd>${article.journal}</dd>
+                <dt>PMID</dt><dd>${article.pmid}</dd>
+              </dl>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -453,6 +510,7 @@ function renderSearch() {
 
 function renderLibrary() {
   const article = getSelectedArticle();
+  const libraryArticles = state.showLowConfidenceOnly ? data.articles.filter(a => a.confidence === 'low') : data.articles;
   return `
     <section class="view">
       <div class="page-head">
@@ -462,6 +520,8 @@ function renderLibrary() {
         </div>
         <div class="flex items-center gap-8">
           <button class="btn">导入 Excel</button>
+          <button class="btn" data-action="toggleLowConfidence">${state.showLowConfidenceOnly ? '显示全部' : '仅看低置信度'}</button>
+          <button class="btn" data-action="markReviewed">批量标记已复核</button>
           <button class="btn btn-primary" data-nav="enrich">批量 AI 加工</button>
         </div>
       </div>
@@ -475,8 +535,8 @@ function renderLibrary() {
             </div>
 
             <div class="split-col">
-              <div class="split-head">文献列表 · 23 篇</div>
-              ${data.articles.map(a => `
+              <div class="split-head">文献列表 · ${libraryArticles.length} 篇</div>
+              ${libraryArticles.map(a => `
                 <div class="lit-card ${a.id === state.selectedArticleId ? 'on' : ''}" data-article="${a.id}">
                   <div class="lit-en">${a.titleEn}</div>
                   <div class="lit-cn">${a.titleCn}</div>
@@ -574,12 +634,13 @@ function renderEnrich() {
     ['metrics', 'IF / 分区匹配', '根据用户导入的 2025 IF 数据表进行本地匹配', '<path d="M4 19h16M7 16V8m5 8V5m5 11v-4"/>'],
   ];
 
-  const queue = [
-    ['已完成', 'Pulsed field ablation: Disrupting technologies...', 'done'],
-    ['运行中', 'Evaluation of variable inter-pulse delays...', 'run'],
-    ['等待中', 'Internal atrial shock delivery in goats...', 'wait'],
-    ['等待中', 'Latest Advances and Ongoing Challenges...', 'wait'],
-  ];
+  const queue = data.articles.map((article, index) => {
+    if (state.processingDone) return ['已完成', article.titleEn, 'done'];
+    if (state.processingPaused && index > 1) return ['已暂停', article.titleEn, 'pause'];
+    if (state.processing && index === 1) return ['运行中', article.titleEn, 'run'];
+    if (state.processing && index < 1) return ['已完成', article.titleEn, 'done'];
+    return [article.confidence === 'low' ? '待复核' : '未处理', article.titleEn, article.confidence === 'low' ? 'fail' : 'wait'];
+  });
 
   return `
     <section class="view">
@@ -590,9 +651,22 @@ function renderEnrich() {
         </div>
         <div class="flex items-center gap-8">
           <button class="btn" data-action="demoToggleAll">切换任务</button>
+          <button class="btn" data-action="togglePause">${state.processingPaused ? '继续' : '暂停'}</button>
           <button class="btn btn-primary" data-action="runPipeline">运行批处理</button>
         </div>
       </div>
+
+      ${state.processingDone ? `
+        <div class="page-body" style="padding-bottom:0;">
+          <div class="card" style="padding:16px; display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div>
+              <div class="section-title" style="margin:0 0 6px;">AI 加工完成</div>
+              <div class="muted" style="font-size:13px;">生成结果已实时同步到文献库，可直接跳转查看。</div>
+            </div>
+            <button class="btn btn-primary" data-nav="library">跳转到文献库页</button>
+          </div>
+        </div>
+      ` : ''}
 
       <div class="page-body">
         <div class="grid grid-2">
@@ -616,21 +690,54 @@ function renderEnrich() {
             <div class="section-title" style="margin:0 0 14px;">批处理队列</div>
             <div class="muted" style="font-size:13px; margin-bottom:10px;">本次将处理 23 篇文献，优先输出中文摘要、研究设计、主题分类与 IF 匹配。</div>
             <div class="progress-track"><div class="progress-fill" style="width:${state.progress}%;"></div></div>
-            <div class="mt-8 muted" style="font-size:12px;">进度 ${state.progress}% · 可断点续跑</div>
+            <div class="mt-8 muted" style="font-size:12px;">进度 ${state.progress}% · 已处理 ${queue.filter(x => x[2] === 'done').length} / 正在处理 ${queue.filter(x => x[2] === 'run').length} / 未处理 ${queue.filter(x => x[2] === 'wait').length}</div>
             <div class="mt-16">
               ${queue.map(([label, title, status]) => `
                 <div class="queue-item">
                   <div class="q-status q-${status}">
-                    ${status === 'done' ? icon('<path d="M20 6 9 17l-5-5"/>') : status === 'run' ? `<svg viewBox="0 0 24 24" class="ico spin"><path d="M12 3a9 9 0 1 1-9 9"/></svg>` : icon('<path d="M12 8v4l3 3"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>')}
+                    ${status === 'done' ? icon('<path d="M20 6 9 17l-5-5"/>') : status === 'run' ? `<svg viewBox="0 0 24 24" class="ico spin"><path d="M12 3a9 9 0 1 1-9 9"/></svg>` : status === 'pause' ? icon('<path d="M10 7v10M14 7v10"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>') : icon('<path d="M12 8v4l3 3"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>')}
                   </div>
                   <div class="spacer">
                     <div style="font-weight:600;">${title}</div>
-                    <div class="muted" style="font-size:11.5px;">${label}</div>
+                    <div class="muted" style="font-size:11.5px;">${label}${status === 'fail' ? ' · 需人工确认或重试' : ''}</div>
                   </div>
-                  ${status === 'run' ? '<span class="tag tag-type">处理中</span>' : status === 'done' ? '<span class="tag tag-q1">完成</span>' : '<span class="tag tag-muted">排队</span>'}
+                  ${status === 'run' ? '<span class="tag tag-type">处理中</span>' : status === 'done' ? '<span class="tag tag-q1">完成</span>' : status === 'pause' ? '<span class="tag tag-if">暂停</span>' : status === 'fail' ? '<span class="tag tag-muted">待人工确认</span>' : '<span class="tag tag-muted">排队</span>'}
                 </div>
               `).join('')}
             </div>
+          </div>
+        </div>
+
+        <div class="grid grid-2 mt-24">
+          <div class="card" style="padding:16px;">
+            <div class="section-title" style="margin:0 0 10px;">自定义 AI 加工任务</div>
+            ${state.customTasks.map(task => `
+              <div class="setting-row" style="padding-left:0; padding-right:0;">
+                <div class="setting-main">
+                  <div>
+                    <div class="setting-name">${task.title}</div>
+                    <div class="setting-desc">输出字段：${task.output}</div>
+                  </div>
+                </div>
+                <span class="tag tag-type">Prompt 可编辑</span>
+              </div>
+            `).join('')}
+            <div class="mt-16 muted" style="font-size:12.5px; line-height:1.7;">支持新增 Prompt 和产出字段，例如 riskLevel、insightSummary、marketTag，并可在 Excel/PPT 模板中直接引用这些字段。</div>
+          </div>
+
+          <div class="card" style="padding:16px;">
+            <div class="section-title" style="margin:0 0 10px;">完整文献列表</div>
+            ${data.articles.map((article, index) => `
+              <div class="setting-row" style="padding-left:0; padding-right:0; ${index === data.articles.length - 1 ? 'border-bottom:none;' : ''}">
+                <div class="setting-main">
+                  <div>
+                    <div class="setting-name">${article.titleEn}</div>
+                    <div class="setting-desc">${article.titleCn}</div>
+                  </div>
+                </div>
+                ${confBadge(article.confidence)}
+              </div>
+            `).join('')}
           </div>
         </div>
 
@@ -665,7 +772,7 @@ function renderSlides() {
       <div class="page-head">
         <div>
           <div class="page-title">产出生成</div>
-          <div class="page-sub">PPT + Excel 双交付物；客户模板即产品模板</div>
+          <div class="page-sub">PPT + Excel 双交付物；PPT 模板与 Excel 模板都可在产品内直接编辑</div>
         </div>
         <div class="flex items-center gap-8">
           <button class="btn" data-action="exportExcel">导出 Excel</button>
@@ -693,24 +800,24 @@ function renderSlides() {
               </div>
 
               <div>
-                <div class="slide">
-                  <div class="slide-topic">${article.topic}</div>
-                  <div class="slide-rule"></div>
-                  <div class="slide-title-en">${article.titleEn}</div>
-                  <div class="slide-title-cn">${article.titleCn}</div>
-                  <div class="slide-infocard">
+                <div class="slide" style="font-family:${state.pptTemplate.fontFamily};">
+                  <div class="slide-topic" style="color:${state.pptTemplate.accentHex}; font-size:${pptFontPx(12, state.pptTemplate.topicFontSize, 18)}px;">${article.topic}</div>
+                  <div class="slide-rule" style="background:linear-gradient(90deg, ${state.pptTemplate.accentHex}, transparent);"></div>
+                  <div class="slide-title-en" style="font-size:${pptFontPx(14, state.pptTemplate.titleFontSize, 22)}px;">${article.titleEn}</div>
+                  <div class="slide-title-cn" style="font-size:${pptFontPx(12.5, state.pptTemplate.subtitleFontSize, 16)}px;">${article.titleCn}</div>
+                  <div class="slide-infocard" style="background:${state.pptTemplate.metadataBg}; font-size:${pptFontPx(9.5, state.pptTemplate.metadataFontSize, 11)}px;">
                     作者：${article.authors}<br>
                     发表日期：${article.date}<br>
                     研究类型：${article.studyType}<br>
                     期刊：${article.journal}<br>
                     IF：${article.if}
                   </div>
-                  <div class="slide-abstract"><b>摘要：</b>${article.abstractCn}</div>
+                  <div class="slide-abstract" style="font-size:${pptFontPx(11.5, state.pptTemplate.bodyFontSize, 12)}px;"><b>${state.pptTemplate.abstractPrefix}</b>${article.abstractCn}</div>
                   <div class="slide-foot">
-                    <div class="slide-cite">参考文献：${article.citation}</div>
-                    <div class="slide-linkbtn">点击查看原文链接</div>
-                    <div class="slide-url">${article.url}</div>
-                    <div class="slide-disc">*版权问题暂不提供直接下载，如有学术交流需要，请联系内部人员</div>
+                    <div class="slide-cite" style="font-size:${pptFontPx(8.5, state.pptTemplate.captionFontSize, 9)}px;">${state.pptTemplate.citationPrefix}${article.citation}</div>
+                    <div class="slide-linkbtn" style="background:${state.pptTemplate.accentHex}; font-size:${pptFontPx(10, state.pptTemplate.metadataFontSize, 11)}px;">${state.pptTemplate.ctaText}</div>
+                    <div class="slide-url" style="font-size:${pptFontPx(8.5, state.pptTemplate.captionFontSize, 9)}px;">${article.url}</div>
+                    <div class="slide-disc" style="font-size:${pptFontPx(8, state.pptTemplate.captionFontSize, 9)}px;">${state.pptTemplate.disclaimerText}</div>
                   </div>
                 </div>
               </div>
@@ -720,8 +827,8 @@ function renderSlides() {
                 <div class="setting-row" style="padding-left:0; padding-right:0;">
                   <div class="setting-main">
                     <div>
-                      <div class="setting-name">客户模板</div>
-                      <div class="setting-desc">20260413-PFA图书馆-onepage.pptx</div>
+                      <div class="setting-name">产品内模板</div>
+                      <div class="setting-desc">${state.pptTemplate.name} · ${state.pptTemplate.fontFamily}</div>
                     </div>
                   </div>
                   <span class="tag tag-q1">A4 纵向</span>
@@ -739,10 +846,10 @@ function renderSlides() {
                   <div class="setting-main">
                     <div>
                       <div class="setting-name">导出字段</div>
-                      <div class="setting-desc">含超链接与版权免责声明</div>
+                      <div class="setting-desc">含按钮文案、版权说明和占位符映射</div>
                     </div>
                   </div>
-                  <button class="btn btn-sm">编辑</button>
+                  <span class="tag tag-type">UI 编辑</span>
                 </div>
               </div>
             </div>
@@ -750,26 +857,70 @@ function renderSlides() {
 
           <div class="grid" style="gap:16px;">
             <div class="card" style="padding:16px;">
+              <div class="section-title" style="margin:0 0 10px;">PPT 样式模板</div>
+              <div class="setting-row" style="padding-left:0; padding-right:0;">
+                <input class="field-input" data-ppt-field="name" value="${state.pptTemplate.name}" style="width:42%;" />
+                <input class="field-input" data-ppt-field="accentHex" value="${state.pptTemplate.accentHex}" style="width:26%;" />
+                <input class="field-input" data-ppt-field="metadataBg" value="${state.pptTemplate.metadataBg}" style="width:26%;" />
+              </div>
+              <div class="setting-row" style="padding-left:0; padding-right:0;">
+                <input class="field-input" data-ppt-field="ctaText" value="${state.pptTemplate.ctaText}" style="width:42%;" />
+                <input class="field-input" data-ppt-field="abstractPrefix" value="${state.pptTemplate.abstractPrefix}" style="width:26%;" />
+                <input class="field-input" data-ppt-field="citationPrefix" value="${state.pptTemplate.citationPrefix}" style="width:26%;" />
+              </div>
+              <div class="setting-row" style="padding-left:0; padding-right:0;">
+                <span class="muted" style="font-size:12.5px; width:70px;">字体</span>
+                <select class="field-input" data-ppt-field="fontFamily" style="width:70%;">
+                  ${['PingFang SC', 'Songti SC', 'STHeiti Sans', 'Helvetica Neue', 'Arial', 'Georgia', 'Times New Roman', 'Menlo'].map(f => `<option ${f === state.pptTemplate.fontFamily ? 'selected' : ''}>${f}</option>`).join('')}
+                </select>
+              </div>
+              <div class="setting-row" style="padding-left:0; padding-right:0; flex-wrap:wrap; gap:8px;">
+                ${[['topicFontSize', '主题标签'], ['titleFontSize', '英文标题'], ['subtitleFontSize', '中文标题'], ['bodyFontSize', '正文摘要'], ['metadataFontSize', '信息框'], ['captionFontSize', '引文/脚注']].map(([field, label]) => `
+                  <div class="flex items-center gap-8" style="width:31%;">
+                    <span class="muted" style="font-size:11.5px;">${label}</span>
+                    <input class="field-input" type="number" min="6" max="48" data-ppt-field="${field}" value="${state.pptTemplate[field]}" style="width:56px; min-width:56px;" />
+                  </div>
+                `).join('')}
+              </div>
+              <div class="mt-16 muted" style="font-size:12.5px; line-height:1.7;">无需上传 .pptx 文件，直接在产品内编辑模板名称、主色、字体、字号、按钮文案、摘要前缀和版权说明；左侧预览实时刷新。</div>
+            </div>
+
+            <div class="card" style="padding:16px;">
               <div class="section-title" style="margin:0 0 10px;">PPT 占位符映射</div>
               ${data.pptPlaceholders.map(([src, target]) => `
-                <div class="map-row">
-                  <div class="map-pill src">${src}</div>
-                  <div class="map-arrow">→</div>
-                  <div class="map-pill">${target}</div>
+                <div class="setting-row" style="padding-left:0; padding-right:0;">
+                  <input class="field-input" value="${src}" style="width: 42%;" />
+                  <span class="muted">→</span>
+                  <select class="field-input" style="width: 42%;">
+                    ${['topic', 'titleEn', 'titleCn', 'authors', 'date', 'studyDesign', 'journal', 'impactFactor', 'abstractCn', 'citation', 'url', 'riskLevel'].map(option => `<option ${option === target ? 'selected' : ''}>${option}</option>`).join('')}
+                  </select>
                 </div>
               `).join('')}
+              <div class="mt-16 card" style="padding:12px; background:var(--panel-2);">
+                <div class="section-title" style="margin:0 0 8px; font-size:13px;">实时预览</div>
+                <div class="muted" style="font-size:12px; line-height:1.7;">{{title_en}} → ${article.titleEn}</div>
+                <div class="muted" style="font-size:12px; line-height:1.7;">{{abstract_cn}} → ${article.abstractCn.slice(0, 60)}...</div>
+              </div>
             </div>
 
             <div class="card" style="padding:16px;">
               <div class="section-title" style="margin:0 0 10px;">Excel 导出模板</div>
               ${data.exportMappings.slice(0, 6).map(([src, target]) => `
-                <div class="map-row">
-                  <div class="map-pill src">${src}</div>
-                  <div class="map-arrow">→</div>
-                  <div class="map-pill">${target}</div>
+                <div class="setting-row" style="padding-left:0; padding-right:0;">
+                  <input class="field-input" value="${src}" style="width: 38%;" />
+                  <select class="field-input" style="width: 38%;">
+                    ${['topic', 'sequence', 'titleEn', 'abstractLink', 'authors', 'date', 'studyDesign', 'journal', 'impactFactor', 'pmid', 'url', 'riskLevel'].map(option => `<option ${option === target ? 'selected' : ''}>${option}</option>`).join('')}
+                  </select>
+                  <span class="tag tag-type">预览</span>
                 </div>
               `).join('')}
-              <div class="mt-16 muted" style="font-size:12.5px; line-height:1.65;">支持自定义列名、列顺序、超链接字段和年份化 IF 列（如“2025年IF”）。</div>
+              <div class="mt-16 card" style="padding:12px; background:var(--panel-2); overflow:auto;">
+                <div class="section-title" style="margin:0 0 8px; font-size:13px;">实时预览</div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                  <tr>${data.exportMappings.slice(0, 4).map(([src]) => `<th style="text-align:left; padding:6px; border-bottom:1px solid var(--border);">${src}</th>`).join('')}</tr>
+                  <tr>${[article.topic, '1', article.titleEn, article.url].map(cell => `<td style="padding:6px; border-bottom:1px solid var(--border);">${cell}</td>`).join('')}</tr>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -783,23 +934,24 @@ function renderSettings() {
     <section class="view">
       <div class="page-head">
         <div>
-          <div class="page-title">设置与数据源</div>
-          <div class="page-sub">管理模型、IF 数据集、分类体系、导入/导出模板</div>
+          <div class="page-title">系统设置</div>
+          <div class="page-sub">仅保留系统密钥与默认项目配置；Excel 导入映射在导入时自动识别并要求确认</div>
         </div>
         <div class="flex items-center gap-8">
-          <button class="btn">导入分类字典</button>
-          <button class="btn btn-primary">保存配置</button>
+          <button class="btn">使用当前项目覆盖默认配置</button>
+          <button class="btn btn-primary">保存默认项目配置</button>
         </div>
       </div>
 
       <div class="page-body">
+        <div class="section-title" style="margin:0 0 12px;">系统密钥</div>
         <div class="grid grid-2">
           <div class="card">
             <div class="setting-row">
               <div class="setting-main">
                 <div>
                   <div class="setting-name">LLM API Key</div>
-                  <div class="setting-desc">必填；用于调用云端 LLM 执行翻译与主题分析（未配置时无法进行 AI 加工）</div>
+                  <div class="setting-desc">必填；用于调用云端 LLM 执行翻译、研究设计和主题分类</div>
                 </div>
               </div>
               <input class="field-input" placeholder="sk-..." type="password" value="sk-xxxxxx" style="width: 140px;" />
@@ -807,38 +959,11 @@ function renderSettings() {
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">AI 加工 Prompt</div>
-                  <div class="setting-desc">查看并自定义翻译 / 主题分类使用的 Prompt</div>
-                </div>
-              </div>
-              <button class="btn btn-sm" onclick="qs('#promptDialog').style.display='block'">查看/编辑</button>
-            </div>
-            <div class="setting-row">
-              <div class="setting-main">
-                <div>
                   <div class="setting-name">NCBI API Key</div>
-                  <div class="setting-desc">提升 PubMed 检索速率，遵守 E-utilities 限流规则</div>
+                  <div class="setting-desc">可选；用于提升 PubMed 检索速率，遵守 E-utilities 限流规则</div>
                 </div>
               </div>
-              <input class="field-input" value="已配置" />
-            </div>
-            <div class="setting-row">
-              <div class="setting-main">
-                <div>
-                  <div class="setting-name">IF / 分区数据集</div>
-                  <div class="setting-desc">JCR 2025.xlsx（用户导入，自持版权数据）</div>
-                </div>
-              </div>
-              <button class="btn btn-sm">更新数据</button>
-            </div>
-            <div class="setting-row">
-              <div class="setting-main">
-                <div>
-                  <div class="setting-name">PPT 模板</div>
-                  <div class="setting-desc">onepage.pptx，自动识别 11 个占位符（需用户上传自备 .pptx，不提供内置默认模板）</div>
-                </div>
-              </div>
-              <button class="btn btn-sm">替换模板</button>
+              <input class="field-input" value="ncbi-xxxxxx" />
             </div>
           </div>
 
@@ -846,65 +971,95 @@ function renderSettings() {
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">导入模板</div>
-                  <div class="setting-desc">PFA 工作稿（6 列）</div>
+                  <div class="setting-name">当前项目配置在哪里修改</div>
+                  <div class="setting-desc">当前项目的 AI 加工任务、自定义研究类型、Excel 导出模板和 PPT 占位符映射不在这里混合编辑。</div>
                 </div>
               </div>
-              <button class="btn btn-sm">编辑映射</button>
+              <span class="tag tag-type">项目级</span>
             </div>
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">导出模板</div>
-                  <div class="setting-desc">PFA 交付 Excel（11 列，含摘要链接 / 原文链接）</div>
+                  <div class="setting-name">当前项目</div>
+                  <div class="setting-desc">PFA 图书馆</div>
                 </div>
               </div>
-              <button class="btn btn-sm">编辑映射</button>
+              <span class="tag tag-if">当前项目</span>
             </div>
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">主题分类体系</div>
-                  <div class="setting-desc">四级菜单 + 呈现方式 + 文献备注（导入 Excel 时可指定列名对应层级，也可手动新增词条）</div>
+                  <div class="setting-name">当前自定义加工任务</div>
+                  <div class="setting-desc">已配置 1 个任务：风险分层</div>
                 </div>
               </div>
-              <button class="btn btn-sm">导入 Excel</button>
+              <button class="btn btn-sm" data-nav="enrich">前往 AI 加工页</button>
             </div>
             <div class="setting-row">
               <div class="setting-main">
                 <div>
-                  <div class="setting-name">研究类型体系</div>
-                  <div class="setting-desc">综述 / 社论 / 动物实验 / 土豆模型（可自行增删；未配置时 AI 根据标题/摘要自动推断，无法判断则留空）</div>
+                  <div class="setting-name">当前导出模板 / PPT 模板</div>
+                  <div class="setting-desc">当前项目单独维护，不受默认值编辑区直接覆盖</div>
                 </div>
               </div>
-              <button class="btn btn-sm">维护词表</button>
+              <button class="btn btn-sm" data-nav="slides">前往产出生成页</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title" style="margin:24px 0 12px;">默认项目配置</div>
+        <div class="grid grid-2 mt-24">
+          <div class="card" style="padding:16px;">
+            <div class="section-title" style="margin:0 0 10px;">默认值说明</div>
+            <div class="muted" style="font-size:12.5px; line-height:1.75; margin-bottom:12px;">
+              这里编辑的是新建项目时自动继承的默认值。它不会反向覆盖已有项目；如果你想把当前项目整套配置沉淀成默认值，应使用顶部“使用当前项目覆盖默认配置”。
+            </div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">默认 Prompt</div><div class="setting-desc">翻译 / 主题分类 Prompt 作为新项目初始值</div></div></div>
+              <span class="tag tag-type">可编辑</span>
+            </div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">默认研究类型词条</div><div class="setting-desc">综述 / 社论 / 动物实验 / 土豆模型</div></div></div>
+              <span class="tag tag-q1">新项目复用</span>
+            </div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">默认 IF / 分区数据集</div><div class="setting-desc">JCR 2025.xlsx（新建项目自动继承）</div></div></div>
+              <button class="btn btn-sm">导入</button>
+            </div>
+            <div class="setting-row" style="padding-left:0; padding-right:0; border-bottom:none;">
+              <div class="setting-main"><div><div class="setting-name">默认 PPT 模板</div><div class="setting-desc">产品内置可编辑 onepage 模板，新建项目自动带出样式与占位符映射</div></div></div>
+              <button class="btn btn-sm">选择</button>
+            </div>
+          </div>
+          <div class="card" style="padding:16px;">
+            <div class="section-title" style="margin:0 0 10px;">默认项目配置清单</div>
+            <div class="muted" style="font-size:13px; line-height:1.75;">
+              新建项目时自动继承：AI Prompt、IF 数据集、研究类型词条、PPT 模板、Excel 导出模板、PPT 占位符映射。用户导入 Excel 后的列映射由 AI 当场识别和确认，不做全局默认模板。
             </div>
           </div>
         </div>
 
         <div class="grid grid-2 mt-24">
           <div class="card" style="padding:16px;">
-            <div class="section-title" style="margin:0 0 10px;">导入映射说明</div>
-            <div class="muted" style="font-size:12.5px; line-height:1.65; margin-bottom:10px;">
-              导入映射 = 您的 Excel 字段名（源列）映射到系统底层数据模型字段（target key）。系统会自动猜测，您也可以在导入确认界面逐列修改。字段优先级分为：必需 / 建议 / 可选。
+            <div class="section-title" style="margin:0 0 10px;">默认 Excel 导出模板</div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">列名、列顺序、超链接字段</div><div class="setting-desc">可直接编辑，并在右侧实时查看预览</div></div></div>
+              <span class="tag tag-if">实时预览</span>
             </div>
-            ${data.importFieldGuide.map(field => `
-              <div class="field-guide-item">
-                <div class="field-guide-head">
-                  <div class="field-guide-label-wrap">
-                    <div class="field-guide-label">${field.label}</div>
-                    <span class="field-guide-badge ${field.priority === 'required' ? 'required' : field.priority === 'recommended' ? 'recommended' : 'optional'}">${field.priority === 'required' ? '必需' : field.priority === 'recommended' ? '建议' : '可选'}</span>
-                  </div>
-                  <div class="field-guide-key">${field.key}</div>
-                </div>
-                <div class="field-guide-desc">${field.desc}</div>
-              </div>
-            `).join('')}
+            <div class="setting-row" style="padding-left:0; padding-right:0; border-bottom:none;">
+              <div class="setting-main"><div><div class="setting-name">默认字段范围</div><div class="setting-desc">标准字段 + 当前产品约定字段，供新项目起步使用</div></div></div>
+              <span class="tag tag-type">模板起点</span>
+            </div>
           </div>
           <div class="card" style="padding:16px;">
-            <div class="section-title" style="margin:0 0 10px;">设计原则</div>
-            <div class="muted" style="font-size:13px; line-height:1.75;">
-              本原型坚持“专业、克制、精致”的界面语言，采用 macOS 三栏式工作台布局，突出可追溯、可复核和客户自定义能力，而不是做通用的 AI 幻灯工具。
+            <div class="section-title" style="margin:0 0 10px;">默认 PPT 占位符映射</div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">占位符文本与字段映射</div><div class="setting-desc">支持自定义占位符和字段映射，并实时查看填充结果</div></div></div>
+              <span class="tag tag-q1">新项目复用</span>
+            </div>
+            <div class="setting-row" style="padding-left:0; padding-right:0;">
+              <div class="setting-main"><div><div class="setting-name">与当前项目关系</div><div class="setting-desc">已有项目继续保留各自模板，不会因为这里修改而被自动覆盖</div></div></div>
+              <span class="tag tag-type">隔离</span>
             </div>
           </div>
         </div>
@@ -990,6 +1145,43 @@ function bindView() {
     };
   }
 
+  const yearEl = qs('[data-action="yearFrom"]');
+  if (yearEl) {
+    yearEl.onchange = () => {
+      const trimmed = yearEl.value.trim();
+      state.yearFrom = trimmed === '' ? null : Number(trimmed);
+      toast(state.yearFrom === null ? '起始年份已清除（不限）' : `起始年份已切换为 ${state.yearFrom}`);
+      render();
+    };
+  }
+
+  qsa('[data-action="toggleLowConfidence"]').forEach(el => el.onclick = () => {
+    state.showLowConfidenceOnly = !state.showLowConfidenceOnly;
+    render();
+  });
+
+  qsa('[data-action="markReviewed"]').forEach(el => el.onclick = () => {
+    data.articles.forEach(article => {
+      if (article.confidence === 'low') article.confidence = 'high';
+    });
+    toast('已批量标记低置信度结果为已复核');
+    render();
+  });
+
+  qsa('[data-action="togglePause"]').forEach(el => el.onclick = () => {
+    state.processingPaused = !state.processingPaused;
+    render();
+  });
+
+  qsa('[data-ppt-field]').forEach(el => {
+    el.onchange = () => {
+      const field = el.dataset.pptField;
+      state.pptTemplate[field] = el.type === 'number' ? Number(el.value) : el.value;
+      toast('PPT 样式模板已更新');
+      render();
+    };
+  });
+
   qs('#themeToggle').onclick = toggleTheme;
 }
 
@@ -1018,6 +1210,8 @@ function toggleTheme() {
 function runDemoPipeline() {
   if (state.processing) return;
   state.processing = true;
+  state.processingPaused = false;
+  state.processingDone = false;
   state.progress = 0;
   render();
 
@@ -1028,6 +1222,7 @@ function runDemoPipeline() {
       render();
       if (p === 100) {
         state.processing = false;
+        state.processingDone = true;
         toast('批处理完成：23 篇文献已更新 AI 结果');
       }
     }, idx * 380);

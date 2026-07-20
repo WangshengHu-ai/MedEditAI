@@ -123,6 +123,7 @@ struct Article: Identifiable, Hashable {
     let evidence: String
     let note: String
     var keywords: String = ""
+    var customFields: [String: String] = [:]
 }
 
 struct MappingPair: Identifiable, Hashable {
@@ -140,14 +141,23 @@ struct ProcessingTask: Identifiable {
     var isEnabled: Bool
 }
 
-enum QueueStatus {
+enum QueueStatus: Equatable {
     case done
     case running
     case waiting
+    case paused
+    case failed
 }
 
 struct QueueItem: Identifiable {
     let id = UUID()
     let title: String
     let status: QueueStatus
+    let detail: String?
+
+    init(title: String, status: QueueStatus, detail: String? = nil) {
+        self.title = title
+        self.status = status
+        self.detail = detail
+    }
 }

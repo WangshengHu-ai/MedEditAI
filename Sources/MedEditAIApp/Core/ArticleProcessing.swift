@@ -62,6 +62,38 @@ enum ArticleProcessor {
         return ExportRow(values: values, hyperlinks: ["摘要/内容简介详情链接": article.url ?? "", "原文链接": article.url ?? ""])
     }
 
+    /// 与 `renderExportRow` 不同：以“规范字段 id”（见 `ExportFieldCatalog`）为 key，而非固定中文表头，
+    /// 供用户自定义 Excel 导出列/PPT 占位符映射时按字段取值。
+    static func renderExportFieldValues(article: ArticleDraft, sequence: Int) -> [String: String] {
+        var values = [
+            "sequence": "\(sequence)",
+            "topic": article.topic,
+            "titleEN": article.titleEN,
+            "titleCN": article.titleCN,
+            "abstractEN": article.abstractEN,
+            "abstractCN": article.abstractCN,
+            "abstractLink": article.url ?? "",
+            "authors": article.authors,
+            "date": article.date,
+            "studyDesign": article.studyType,
+            "journal": article.journal,
+            "impactFactor": article.impactFactor ?? "",
+            "quartile": article.quartile ?? "",
+            "pmid": article.pmid ?? "",
+            "url": article.url ?? "",
+            "product": article.product,
+            "evidence": article.evidence,
+            "citation": article.citation,
+            "keywords": article.keywords ?? "",
+            "note": article.note
+        ]
+        if let customFields = article.customFields {
+            values.merge(customFields) { _, new in new }
+        }
+        return values
+    }
+
+
     static func renderSlide(article: ArticleDraft) -> RenderedSlide {
         RenderedSlide(
             topic: article.topic,

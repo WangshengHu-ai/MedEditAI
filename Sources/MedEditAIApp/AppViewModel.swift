@@ -10,7 +10,8 @@ final class AppViewModel: ObservableObject {
     @Published var selectedArticleID: String?
     @Published var selectedSlideIndex: Int = 0
     @Published var searchText: String = ""
-    @Published var yearFrom: Int = 2024
+    /// 起始年份；nil 表示用户未指定，不限制年份下限。
+    @Published var yearFrom: Int? = nil
     @Published var sortOrder: PubMedSort = .bestMatch
     @Published var tasks: [ProcessingTask] = SampleData.processingTasks
     @Published var progress: Double = 0.0
@@ -21,7 +22,7 @@ final class AppViewModel: ObservableObject {
     @Published var totalHits: Int = 0
     @Published var currentPage: Int = 0        // 0-indexed
     @Published var pageSize: Int = 25
-    let pageSizeOptions: [Int] = [10, 25, 50, 100]
+    let pageSizeOptions: [Int] = [10, 25, 50, 100, 200, 500, 1000]
 
     // MARK: - Projects (source of truth)
     @Published private var storedProjects: [StoredProject]
@@ -32,8 +33,20 @@ final class AppViewModel: ObservableObject {
     @Published var topicTreeNodes: [TopicNode] = []
     @Published var impactFactorByJournal: [String: String] = [:]
     @Published var apiKey: String = ""
+    @Published var ncbiApiKey: String = ""
     @Published var pptTemplateURL: URL?
+    @Published var pptVisualTemplate: PPTVisualTemplate = .init()
     @Published var promptTemplates: PromptTemplates = .default
+    @Published var exportColumns: [ExportColumnConfig] = ProjectConfig.defaultExportColumns
+    @Published var pptPlaceholderMappings: [PPTPlaceholderMapping] = ProjectConfig.defaultPPTPlaceholders
+    @Published var customTasks: [CustomProcessingTask] = []
+    @Published var defaultProjectConfig: ProjectConfig = .default
+    @Published var enrichmentQueue: [QueueItem] = []
+    /// 上一次构建 `enrichmentQueue` 时对应的文献 id 序列；用于判断缓存的队列是否仍与当前项目的文献集合一致（
+    /// 否则切换项目/重新导入搜索后会错误地复用上一批的题目与状态）。
+    private var enrichmentQueueDraftIDs: [String] = []
+    @Published var isEnrichmentPaused: Bool = false
+    @Published var enrichmentCompleted: Bool = false
 
     // MARK: - Import mapping confirmation
     @Published var pendingImport: ImportAnalysis?
@@ -46,6 +59,9 @@ final class AppViewModel: ObservableObject {
     /// 用户自定义研究类型词条；为空时 AI 加工会根据标题/摘要自动推断，仍无法判断则留空。
     @Published var customStudyTerms: [String] = []
 
+    /// 文献库页是否只显示待人工复核的低置信度结果。
+    @Published var showLowConfidenceOnly: Bool = false
+
     // MARK: - Static config (navigation & previews, not result data)
     let quickActions = SampleData.quickActions
     let importMappings = SampleData.importMappings
@@ -55,24 +71,34 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Services
     private let store: LibraryStore
-    private let pubmed: PubMedFetching
+    private let pubmedProvider: PubMedFetching?
+    private let llmProvider: LLMProviding?
 
-    init(pubmed: PubMedFetching = PubMedService(), store: LibraryStore = LibraryStore()) {
-        self.pubmed = pubmed
+    private var pubmed: PubMedFetching {
+        pubmedProvider ?? PubMedService(apiKey: ncbiApiKey.isEmpty ? nil : ncbiApiKey)
+    }
+
+    init(pubmed: PubMedFetching? = nil, llmProvider: LLMProviding? = nil, store: LibraryStore = LibraryStore()) {
+        self.pubmedProvider = pubmed
+        self.llmProvider = llmProvider
         self.store = store
         let snapshot = store.load()
+        self.defaultProjectConfig = snapshot.defaultProjectConfig ?? .default
         self.impactFactorByJournal = snapshot.impactFactorByJournal
         self.promptTemplates = snapshot.promptTemplates ?? .default
         self.customStudyTerms = snapshot.customStudyTerms
         self.topicTreeNodes = snapshot.topicScheme.map(Self.nodes(from:)) ?? []
+        self.apiKey = snapshot.apiKey ?? ""
+        self.ncbiApiKey = snapshot.ncbiApiKey ?? ""
         if snapshot.projects.isEmpty {
-            let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [])
+            let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [], config: self.defaultProjectConfig)
             self.storedProjects = [defaultProject]
             self.selectedProjectID = defaultProject.id
         } else {
             self.storedProjects = snapshot.projects
             self.selectedProjectID = snapshot.projects[0].id
         }
+        loadActiveProjectConfig()
         self.selectedArticleID = articles.first?.id
     }
 
@@ -113,7 +139,19 @@ final class AppViewModel: ObservableObject {
     // MARK: - Data state
     var articleCount: Int { drafts.count }
     var hasData: Bool { !drafts.isEmpty }
-    var pptTemplateName: String { pptTemplateURL?.lastPathComponent ?? "未选择模板" }
+    var pptTemplateName: String { pptVisualTemplate.name }
+    var activeDrafts: [ArticleDraft] { drafts }
+    var activeDraft: ArticleDraft? { drafts.first }
+    var previewDraftForTemplates: ArticleDraft {
+        activeDraft ?? Self.draft(from: SampleData.articles.first ?? Self.placeholderArticle)
+    }
+    var availableExportFields: [CanonicalField] {
+        let custom = customTasks
+            .map { CanonicalField(id: $0.outputFieldKey, label: $0.title, hint: "自定义加工字段：\($0.outputFieldKey)", priority: .optional) }
+            .filter { !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        var seen: Set<String> = []
+        return (ExportFieldCatalog.fields + custom).filter { seen.insert($0.id).inserted }
+    }
     /// AI 加工目标数：有勾选则为勾选数，否则为全部。
     var enrichmentTargetCount: Int { selectedForExport.isEmpty ? drafts.count : selectedForExport.count }
 
@@ -144,7 +182,9 @@ final class AppViewModel: ObservableObject {
     // MARK: - Project management
     func chooseProject(_ project: Project) {
         guard project.id != selectedProjectID else { return }
+        saveActiveProjectConfig()
         selectedProjectID = project.id
+        loadActiveProjectConfig()
         selectedForExport = []
         selectedTopic = nil
         selectedArticleID = articles.first?.id
@@ -157,9 +197,11 @@ final class AppViewModel: ObservableObject {
     func addProject(name: String, colorHex: String = "#0E9F9F") -> UUID {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = trimmed.isEmpty ? "未命名项目" : trimmed
-        let project = StoredProject(name: finalName, colorHex: colorHex, articles: [])
+        saveActiveProjectConfig()
+        let project = StoredProject(name: finalName, colorHex: colorHex, articles: [], config: defaultProjectConfig)
         storedProjects.append(project)
         selectedProjectID = project.id
+        loadActiveProjectConfig()
         selectedForExport = []
         selectedArticleID = nil
         resetSearchPaging()
@@ -181,10 +223,12 @@ final class AppViewModel: ObservableObject {
             showToast("至少保留一个项目")
             return
         }
+        saveActiveProjectConfig()
         let removedName = storedProjects[index].name
         storedProjects.remove(at: index)
         if selectedProjectID == id {
             selectedProjectID = storedProjects[0].id
+            loadActiveProjectConfig()
             selectedForExport = []
             selectedArticleID = articles.first?.id
             resetSearchPaging()
@@ -238,7 +282,6 @@ final class AppViewModel: ObservableObject {
         var items: [AlertItem] = []
         if pendingReviewCount > 0 { items.append(AlertItem(title: "\(pendingReviewCount) 条低置信度结果待复核")) }
         if !impactFactorByJournal.isEmpty { items.append(AlertItem(title: "IF 数据集已导入 \(impactFactorByJournal.count) 条")) }
-        if pptTemplateURL != nil { items.append(AlertItem(title: "onepage PPT 模板已配置")) }
         if drafts.isEmpty {
             items.append(AlertItem(title: "尚无数据：请导入 Excel/CSV 或从 PubMed 检索"))
         } else if items.isEmpty {
@@ -248,7 +291,9 @@ final class AppViewModel: ObservableObject {
     }
 
     var queue: [QueueItem] {
-        drafts.prefix(6).map { draft in
+        let currentIDs = drafts.enumerated().map { draftID($1, index: $0) }
+        if !enrichmentQueue.isEmpty, enrichmentQueueDraftIDs == currentIDs { return enrichmentQueue }
+        return drafts.map { draft in
             let title = draft.titleEN.isEmpty ? draft.titleCN : draft.titleEN
             return QueueItem(title: title.isEmpty ? "(无标题)" : title, status: draft.abstractCN.isEmpty ? .waiting : .done)
         }
@@ -263,7 +308,8 @@ final class AppViewModel: ObservableObject {
     }
 
     var displayedQuery: String {
-        PubMedQueryBuilder.buildQuery(keywords: [], requiredTerms: searchTerms, yearRange: yearFrom...3000)
+        let range: ClosedRange<Int>? = yearFrom.map { $0...3000 }
+        return PubMedQueryBuilder.buildQuery(keywords: [], requiredTerms: searchTerms, yearRange: range)
     }
 
     // MARK: - Export selection
@@ -309,6 +355,18 @@ final class AppViewModel: ObservableObject {
         showToast("\(tasks[index].title)已\(tasks[index].isEnabled ? "启用" : "关闭")")
     }
 
+    func pauseEnrichment() {
+        guard isBusy else { return }
+        isEnrichmentPaused = true
+        showToast("AI 加工已暂停")
+    }
+
+    func resumeEnrichment() {
+        guard isBusy else { return }
+        isEnrichmentPaused = false
+        showToast("AI 加工继续执行")
+    }
+
     // MARK: - Search pagination state
     var totalPages: Int {
         guard totalHits > 0 else { return 0 }
@@ -347,10 +405,15 @@ final class AppViewModel: ObservableObject {
         if !searchTerms.isEmpty { await performSearch(page: 0) }
     }
 
+    func changeYearFrom(_ year: Int?) async {
+        yearFrom = year
+        if !searchTerms.isEmpty { await performSearch(page: 0) }
+    }
+
     func changePageSize(_ size: Int) async {
         guard size != pageSize, size > 0 else { return }
         pageSize = size
-        if !searchTerms.isEmpty, totalHits > 0 { await performSearch(page: 0) }
+        if !searchTerms.isEmpty { await performSearch(page: 0) }
         else { resetSearchPaging() }
     }
 
@@ -459,28 +522,63 @@ final class AppViewModel: ObservableObject {
             showToast("请先在设置中配置云端 LLM API Key")
             return
         }
-        isBusy = true
+        enrichmentCompleted = false
+        isEnrichmentPaused = false
         progress = 0
-        defer { isBusy = false }
 
         let targetIDs = selectedForExport.isEmpty ? Set(articles.map(\.id)) : selectedForExport
         var working = drafts
-        let total = working.indices.filter { targetIDs.contains(draftID(working[$0], index: $0)) }.count
+        let targetIndices = working.indices.filter { targetIDs.contains(draftID(working[$0], index: $0)) }
+        let total = targetIndices.count
         guard total > 0 else { showToast("请选择要加工的文献"); return }
+        isBusy = true
+        defer {
+            isBusy = false
+            isEnrichmentPaused = false
+        }
         showToast("使用云端 LLM 加工中…")
 
         let service = enrichmentService()
         var processed = 0
-        for index in working.indices {
-            guard targetIDs.contains(draftID(working[index], index: index)) else { continue }
-            let record = Self.record(from: working[index])
-            let enriched = await service.enrich(record: record)
-            working[index] = Self.merged(original: working[index], enriched: enriched)
-            processed += 1
-            progress = Double(processed) / Double(total)
+        // 队列始终覆盖当前项目的完整文献列表：不在本次加工范围内的文献保留其现有状态（已处理/未处理），
+        // 避免“仅勾选部分文献加工”后，AI 加工页只显示被选中的子集、看不到完整列表。
+        let targetIndexSet = Set(targetIndices)
+        enrichmentQueue = working.indices.map { idx in
+            let draft = working[idx]
+            let title = draft.titleEN.isEmpty ? draft.titleCN : draft.titleEN
+            let displayTitle = title.isEmpty ? "(无标题)" : title
+            if targetIndexSet.contains(idx) {
+                return QueueItem(title: displayTitle, status: .waiting)
+            }
+            return QueueItem(title: displayTitle, status: draft.abstractCN.isEmpty ? .waiting : .done)
+        }
+        enrichmentQueueDraftIDs = working.indices.map { draftID(working[$0], index: $0) }
+
+        for index in targetIndices {
+            while isEnrichmentPaused {
+                enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .paused, detail: "等待继续")
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+
+            enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .running)
+            do {
+                let record = Self.record(from: working[index])
+                let enriched = try await service.enrich(record: record)
+                working[index] = Self.merged(original: working[index], enriched: enriched)
+                drafts = working
+                processed += 1
+                progress = Double(processed) / Double(total)
+                enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .done)
+                persist()
+            } catch {
+                let message = error.localizedDescription
+                enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .failed, detail: message)
+                showToast("文献处理失败：\(message)")
+            }
         }
         drafts = working
         selectedArticleID = articles.first(where: { targetIDs.contains($0.id) })?.id ?? selectedArticleID
+        enrichmentCompleted = true
         persist()
         showToast("批处理完成：\(processed) 篇已更新 AI 结果")
     }
@@ -512,6 +610,19 @@ final class AppViewModel: ObservableObject {
             return
         }
         showToast("未找到要保存的文献")
+    }
+
+    /// 批量将指定文章标记为已复核：把 confidence 提升到高可信区间。
+    func markArticlesReviewed(ids: [String]) {
+        guard !ids.isEmpty else { return }
+        var working = drafts
+        let target = Set(ids)
+        for index in working.indices where target.contains(draftID(working[index], index: index)) {
+            working[index].confidence = max(working[index].confidence, 0.95)
+        }
+        drafts = working
+        persist()
+        showToast("已标记复核：\(ids.count) 篇")
     }
 
     // MARK: - Real: import / export
@@ -659,6 +770,7 @@ final class AppViewModel: ObservableObject {
     func chooseTemplate() {
         guard let url = openPanel(extensions: ["pptx"]) else { return }
         pptTemplateURL = url
+        persist()
         showToast("已选择 PPT 模板：\(url.lastPathComponent)")
     }
 
@@ -679,7 +791,8 @@ final class AppViewModel: ObservableObject {
         guard !drafts.isEmpty else { showToast("暂无可导出的文献"); return }
         guard let url = savePanel(suggestedName: "MedEditAI-交付.xlsx") else { return }
         do {
-            try DocumentService.exportExcel(articles: articlesToExport, template: Self.deliveryTemplate, to: url)
+            let columns = activeProjectConfig().exportColumns
+            try DocumentService.exportExcel(articles: articlesToExport, columns: columns, to: url)
             showToast("已导出 Excel 交付表：\(articlesToExport.count) 篇")
         } catch {
             showToast("导出失败：\(error.localizedDescription)")
@@ -688,14 +801,10 @@ final class AppViewModel: ObservableObject {
 
     func exportPPTX() {
         guard !drafts.isEmpty else { showToast("暂无可导出的文献"); return }
-        guard let template = pptTemplateURL ?? openPanel(extensions: ["pptx"]) else {
-            showToast("请先选择 onepage PPT 模板")
-            return
-        }
-        pptTemplateURL = template
         guard let output = savePanel(suggestedName: "MedEditAI-onepage.pptx") else { return }
         do {
-            try DocumentService.exportPPTX(articles: articlesToExport, templateURL: template, to: output)
+            let mapping = activeProjectConfig().pptPlaceholders
+            try DocumentService.exportPPTX(articles: articlesToExport, mapping: mapping, visualTemplate: pptVisualTemplate, to: output)
             showToast("已导出 onepage PPT：\(articlesToExport.count) 页")
         } catch {
             showToast("导出失败：\(error.localizedDescription)")
@@ -731,7 +840,9 @@ final class AppViewModel: ObservableObject {
             llm: provider,
             topicScheme: Self.scheme(from: topicTreeNodes),
             customStudyTerms: customStudyTerms,
-            impactFactorByJournal: impactFactorByJournal
+            impactFactorByJournal: impactFactorByJournal,
+            enabledTasks: Set(tasks.filter(\.isEnabled).map(\.key)),
+            customTasks: customTasks
         )
     }
 
@@ -744,16 +855,94 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    private var activeProjectConfigIndex: Int? {
+        storedProjects.firstIndex(where: { $0.id == selectedProjectID })
+    }
+
+    private func activeProjectConfig() -> ProjectConfig {
+        if let index = activeProjectConfigIndex, let config = storedProjects[index].config {
+            return config
+        }
+        return defaultProjectConfig
+    }
+
+    private func loadActiveProjectConfig() {
+        let config = activeProjectConfig()
+        promptTemplates = config.promptTemplates
+        impactFactorByJournal = config.impactFactorByJournal
+        customStudyTerms = config.customStudyTerms
+        topicTreeNodes = config.topicScheme.map(Self.nodes(from:)) ?? []
+        pptTemplateURL = config.pptTemplatePath.map(URL.init(fileURLWithPath:))
+        pptVisualTemplate = config.pptVisualTemplate
+        exportColumns = config.exportColumns
+        pptPlaceholderMappings = config.pptPlaceholders
+        customTasks = config.customTasks
+    }
+
+    private func saveActiveProjectConfig() {
+        guard let index = activeProjectConfigIndex else { return }
+        storedProjects[index].config = ProjectConfig(
+            promptTemplates: promptTemplates,
+            impactFactorByJournal: impactFactorByJournal,
+            customStudyTerms: customStudyTerms,
+            topicScheme: Self.scheme(from: topicTreeNodes),
+            pptTemplatePath: pptTemplateURL?.path,
+            pptVisualTemplate: pptVisualTemplate,
+            exportColumns: exportColumns,
+            pptPlaceholders: pptPlaceholderMappings,
+            customTasks: customTasks
+        )
+    }
+
     private func persist() {
+        saveActiveProjectConfig()
         try? store.save(
             LibrarySnapshot(
                 projects: storedProjects,
                 customStudyTerms: customStudyTerms,
                 impactFactorByJournal: impactFactorByJournal,
                 promptTemplates: promptTemplates,
-                topicScheme: Self.scheme(from: topicTreeNodes)
+                topicScheme: Self.scheme(from: topicTreeNodes),
+                apiKey: apiKey,
+                ncbiApiKey: ncbiApiKey,
+                defaultProjectConfig: defaultProjectConfig
             )
         )
+    }
+
+    func saveDefaultProjectConfig(_ config: ProjectConfig) {
+        defaultProjectConfig = config
+        persist()
+        showToast("已保存默认项目配置")
+    }
+
+    func makeCurrentProjectConfig() -> ProjectConfig {
+        ProjectConfig(
+            promptTemplates: promptTemplates,
+            impactFactorByJournal: impactFactorByJournal,
+            customStudyTerms: customStudyTerms,
+            topicScheme: Self.scheme(from: topicTreeNodes),
+            pptTemplatePath: pptTemplateURL?.path,
+            pptVisualTemplate: pptVisualTemplate,
+            exportColumns: exportColumns,
+            pptPlaceholders: pptPlaceholderMappings,
+            customTasks: customTasks
+        )
+    }
+
+    func updatePPTVisualTemplate(_ template: PPTVisualTemplate) {
+        pptVisualTemplate = template
+        persist()
+    }
+
+    func updateExportColumns(_ columns: [ExportColumnConfig]) {
+        exportColumns = columns
+        persist()
+    }
+
+    func updatePPTPlaceholderMappings(_ mappings: [PPTPlaceholderMapping]) {
+        pptPlaceholderMappings = mappings
+        persist()
     }
 
     private func openPanel(extensions: [String]) -> URL? {
@@ -813,6 +1002,7 @@ final class AppViewModel: ObservableObject {
         result.confidence = enriched.confidence
         result.note = enriched.note
         if let kw = enriched.keywords, !kw.isEmpty { result.keywords = kw }
+        if let customFields = enriched.customFields, !customFields.isEmpty { result.customFields = customFields }
         return result
     }
 
@@ -836,7 +1026,8 @@ final class AppViewModel: ObservableObject {
             product: article.product,
             evidence: article.evidence,
             note: article.note,
-            keywords: article.keywords.isEmpty ? nil : article.keywords
+            keywords: article.keywords.isEmpty ? nil : article.keywords,
+            customFields: article.customFields.isEmpty ? nil : article.customFields
         )
     }
 
@@ -876,7 +1067,8 @@ final class AppViewModel: ObservableObject {
             product: draft.product,
             evidence: draft.evidence,
             note: draft.note,
-            keywords: draft.keywords ?? ""
+            keywords: draft.keywords ?? "",
+            customFields: draft.customFields ?? [:]
         )
     }
 

@@ -69,11 +69,11 @@ private struct DetailShellView: View {
         case .library:
             LibraryDetailView(viewModel: viewModel, article: viewModel.activeArticle)
         case .slides:
-            SlidePreviewDetailView(article: viewModel.activeArticle)
+            SlidePreviewDetailView(article: viewModel.activeArticle, template: viewModel.pptVisualTemplate)
         case .dashboard:
             InsightDetailView()
         case .search:
-            SearchContextDetailView(viewModel: viewModel)
+            LibraryDetailView(viewModel: viewModel, article: viewModel.activeArticle)
         case .enrich:
             EnrichDetailView(viewModel: viewModel)
         case .settings:

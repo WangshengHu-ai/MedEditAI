@@ -82,6 +82,9 @@ struct ArticleDraft: Hashable, Codable {
     var evidence: String
     var note: String
     var keywords: String?
+    /// 用户自定义 AI 加工任务的产出结果：key = CustomProcessingTask.outputFieldKey。
+    /// Optional（而非默认空字典）是为了保证旧版本持久化数据缺少该字段时仍可正常解码。
+    var customFields: [String: String]?
 }
 
 struct PubMedRecord: Hashable, Codable {

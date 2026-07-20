@@ -4,6 +4,8 @@ struct SidebarView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var renamingProject: Project?
     @State private var renameText = ""
+    @State private var showingNewProjectAlert = false
+    @State private var newProjectText = ""
 
     var body: some View {
         List(selection: $viewModel.selectedSection) {
@@ -50,6 +52,15 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("MedEditAI")
+        .alert("新建项目", isPresented: $showingNewProjectAlert) {
+            TextField("项目名称", text: $newProjectText)
+            Button("创建") {
+                viewModel.addProject(name: newProjectText)
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("请输入项目名称，稍后可在项目列表里右键重命名。")
+        }
         .alert("重命名项目", isPresented: Binding(
             get: { renamingProject != nil },
             set: { if !$0 { renamingProject = nil } }
@@ -66,7 +77,8 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 8) {
                 Button {
-                    viewModel.addProject(name: "新项目 \(viewModel.projects.count + 1)")
+                    newProjectText = "新项目 \(viewModel.projects.count + 1)"
+                    showingNewProjectAlert = true
                 } label: {
                     Label("新建项目", systemImage: "plus.circle.fill")
                 }
@@ -175,6 +187,26 @@ struct DashboardView: View {
 struct SearchView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var showingBatchOptions = false
+    @State private var yearInput: String = ""
+
+    /// 起始年份支持“不指定”：清空输入框即代表不限制起始年份，检索会覆盖所有年份。
+    private var yearBinding: Binding<String> {
+        Binding(
+            get: {
+                if !yearInput.isEmpty { return yearInput }
+                if let year = viewModel.yearFrom { return "\(year)" }
+                return ""
+            },
+            set: { newValue in
+                yearInput = newValue.filter { $0.isNumber }
+                if yearInput.isEmpty {
+                    Task { await viewModel.changeYearFrom(nil) }
+                } else if let value = Int(yearInput), (1900...3000).contains(value) {
+                    Task { await viewModel.changeYearFrom(value) }
+                }
+            }
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -233,8 +265,10 @@ struct SearchView: View {
                         Text("起始年份")
                             .font(.system(size: 12.5))
                             .foregroundStyle(AppTheme.textSecondary)
-                        Stepper("\(viewModel.yearFrom)", value: $viewModel.yearFrom, in: 1900...3000)
-                            .frame(width: 130)
+                        TextField("不限", text: yearBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 92)
+                            .accessibilityIdentifier("field-year-from")
                     }
                     HStack(spacing: 8) {
                         Text("排序")
@@ -266,7 +300,7 @@ struct SearchView: View {
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
-                        .frame(width: 110)
+                        .frame(width: 130)
                         .accessibilityIdentifier("picker-page-size")
                     }
                     Spacer()
@@ -315,11 +349,12 @@ struct SearchView: View {
                         SearchHeaderRow()
                         ForEach(viewModel.articles) { article in
                             Button {
-                                viewModel.toggleExportSelection(article)
+                                viewModel.chooseArticle(article)
                             } label: {
-                                SearchArticleRow(article: article, isChecked: viewModel.isSelectedForExport(article))
+                                SearchArticleRow(article: article, isChecked: viewModel.selectedArticle?.id == article.id)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("search-article-\(article.id)")
                             if article.id != viewModel.articles.last?.id {
                                 Divider()
                             }
@@ -336,12 +371,32 @@ struct SearchView: View {
 struct LibraryListView: View {
     @ObservedObject var viewModel: AppViewModel
 
+    private var displayedArticles: [Article] {
+        let base = viewModel.filteredArticles
+        if viewModel.showLowConfidenceOnly {
+            return base.filter { $0.confidence == .low }
+        }
+        return base
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PageHeader(title: "文献库", subtitle: "三栏工作台：分类树 / 文献列表 / 中英对照详情") {
                 HStack(spacing: 10) {
                     Button("导入 Excel") { viewModel.importDocument() }
                         .accessibilityIdentifier("btn-import-excel")
+                    Button(viewModel.showLowConfidenceOnly ? "显示全部" : "仅看低置信度") {
+                        viewModel.showLowConfidenceOnly.toggle()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("btn-low-confidence-filter")
+                    Button("批量标记已复核") {
+                        let ids = displayedArticles.filter { $0.confidence == .low }.map(\.id)
+                        viewModel.markArticlesReviewed(ids: ids)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(displayedArticles.allSatisfy { $0.confidence != .low })
+                    .accessibilityIdentifier("btn-mark-reviewed")
                     Button("批量 AI 加工") {
                         viewModel.navigate(to: .enrich)
                     }
@@ -362,7 +417,7 @@ struct LibraryListView: View {
                     )
                     .frame(width: 260, alignment: .topLeading)
 
-                    if viewModel.articles.isEmpty {
+                    if displayedArticles.isEmpty {
                         EmptyStateView(
                             icon: "books.vertical",
                             title: "文献库为空",
@@ -386,14 +441,14 @@ struct LibraryListView: View {
                                 .padding(.horizontal, 4)
                             }
 
-                            if viewModel.filteredArticles.isEmpty {
+                            if displayedArticles.isEmpty {
                                 Text("该主题下暂无文献")
                                     .font(.system(size: 12.5))
                                     .foregroundStyle(AppTheme.textTertiary)
                                     .padding(16)
                             } else {
                                 VStack(spacing: 0) {
-                                    ForEach(viewModel.filteredArticles) { article in
+                                    ForEach(displayedArticles) { article in
                                         Button {
                                             viewModel.chooseArticle(article)
                                         } label: {
@@ -481,6 +536,16 @@ struct LibraryDetailView: View {
                     }
                 }
 
+                if !article.customFields.isEmpty {
+                    DetailBlock(title: "自定义加工字段") {
+                        VStack(spacing: 8) {
+                            ForEach(article.customFields.keys.sorted(), id: \.self) { key in
+                                AIFieldRow(label: key, value: article.customFields[key] ?? "", trailing: "自定义")
+                            }
+                        }
+                    }
+                }
+
                 DetailBlock(title: "备注") {
                     Text(article.note)
                         .font(.system(size: 13.5))
@@ -496,6 +561,19 @@ struct LibraryDetailView: View {
 struct EnrichView: View {
     @ObservedObject var viewModel: AppViewModel
 
+    private var customTasksBinding: Binding<[CustomProcessingTask]> {
+        Binding(get: { viewModel.customTasks }, set: { viewModel.updateCustomTasks($0) })
+    }
+
+    private var queueSummary: String {
+        let done = viewModel.queue.filter { $0.status == .done }.count
+        let running = viewModel.queue.filter { $0.status == .running }.count
+        let paused = viewModel.queue.filter { $0.status == .paused }.count
+        let failed = viewModel.queue.filter { $0.status == .failed }.count
+        let waiting = viewModel.queue.filter { $0.status == .waiting }.count
+        return "已完成 \(done) · 处理中 \(running) · 已暂停 \(paused) · 失败 \(failed) · 未处理 \(waiting)"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -509,6 +587,30 @@ struct EnrichView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.accent)
                         .disabled(viewModel.isBusy || !viewModel.hasData)
+                        .accessibilityIdentifier("btn-run-enrichment")
+                        if viewModel.isBusy {
+                            Button(viewModel.isEnrichmentPaused ? "继续" : "暂停") {
+                                if viewModel.isEnrichmentPaused {
+                                    viewModel.resumeEnrichment()
+                                } else {
+                                    viewModel.pauseEnrichment()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("btn-toggle-enrichment")
+                        }
+                    }
+                }
+
+                if viewModel.enrichmentCompleted {
+                    HStack {
+                        InfoPanel(title: "AI 加工完成", text: "结果已实时回写到文献库，可直接跳转查看。", tags: ["已更新文献库"])
+                        Button("跳转到文献库页") {
+                            viewModel.navigate(to: .library)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.accent)
+                        .accessibilityIdentifier("btn-jump-library")
                     }
                 }
 
@@ -523,6 +625,8 @@ struct EnrichView: View {
                             }
                         }
                         .roundedPanel()
+
+                        CustomProcessingTasksEditorPanel(tasks: customTasksBinding)
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -533,6 +637,10 @@ struct EnrichView: View {
                                  : "当前文献库为空，请先在检索中心或文献库导入数据后再运行批处理。")
                                 .font(.system(size: 13.5))
                                 .foregroundStyle(AppTheme.textSecondary)
+
+                            Text(queueSummary)
+                                .font(.system(size: 12))
+                                .foregroundStyle(AppTheme.textTertiary)
 
                             ProgressView(value: viewModel.progress)
                                 .tint(AppTheme.accent)
@@ -576,8 +684,8 @@ struct EnrichView: View {
                     InfoPanel(
                         title: "LLM 模式",
                         text: viewModel.apiKey.isEmpty
-                            ? "未配置 API Key：使用离线本地识别，未命中词典的译文标注“待人工校对”。"
-                            : "已配置 API Key：使用云端 LLM 进行翻译与主题分类。",
+                            ? "未配置 API Key：AI 加工需要云端 LLM 支持，暂时无法运行；请先在设置中配置 API Key。"
+                            : "已配置 API Key：使用云端 LLM 进行翻译、研究设计和主题分类。",
                         tags: []
                     )
                 }
@@ -590,10 +698,22 @@ struct EnrichView: View {
 struct SlidesView: View {
     @ObservedObject var viewModel: AppViewModel
 
+    private var exportColumnsBinding: Binding<[ExportColumnConfig]> {
+        Binding(get: { viewModel.exportColumns }, set: { viewModel.updateExportColumns($0) })
+    }
+
+    private var pptMappingsBinding: Binding<[PPTPlaceholderMapping]> {
+        Binding(get: { viewModel.pptPlaceholderMappings }, set: { viewModel.updatePPTPlaceholderMappings($0) })
+    }
+
+    private var pptVisualTemplateBinding: Binding<PPTVisualTemplate> {
+        Binding(get: { viewModel.pptVisualTemplate }, set: { viewModel.updatePPTVisualTemplate($0) })
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: "产出生成", subtitle: "PPT + Excel 双交付物；客户模板即产品模板") {
+                PageHeader(title: "产出生成", subtitle: "PPT + Excel 双交付物；PPT 模板与 Excel 模板都可在产品内直接编辑") {
                     HStack(spacing: 10) {
                         Button("导出 Excel") {
                             viewModel.exportExcel()
@@ -612,7 +732,7 @@ struct SlidesView: View {
                     EmptyStateView(
                         icon: "play.rectangle.on.rectangle",
                         title: "暂无可生成的交付物",
-                        message: "请先导入文献或从 PubMed 检索。产出生成会使用你选择的 onepage .pptx 模板与自定义 Excel 导出模板。",
+                        message: "请先导入文献或从 PubMed 检索。产出生成会使用产品内可编辑的 PPT 模板和自定义 Excel 导出模板。",
                         actionTitle: "载入示例数据",
                         action: { viewModel.loadSampleData() }
                     )
@@ -637,8 +757,9 @@ struct SlidesView: View {
 
                     SlideSettingsPanel(templateName: viewModel.pptTemplateName)
 
-                    MappingPanel(title: "PPT 占位符映射", items: viewModel.pptMappings)
-                    MappingPanel(title: "Excel 导出模板", items: Array(viewModel.exportMappings.prefix(6)), footer: "支持自定义列名、列顺序、超链接字段和年份化 IF 列（如“2025年IF”）。")
+                    PPTVisualTemplateEditorPanel(template: pptVisualTemplateBinding)
+                    ExportTemplateEditorPanel(columns: exportColumnsBinding, availableFields: viewModel.availableExportFields, previewDrafts: viewModel.activeDrafts)
+                    PPTTemplateEditorPanel(mappings: pptMappingsBinding, availableFields: viewModel.availableExportFields, previewDraft: viewModel.activeDraft)
                 }
             }
             .padding(24)
@@ -648,79 +769,134 @@ struct SlidesView: View {
 
 struct SettingsView: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var showingPromptEditor = false
+    @State private var defaultConfig: ProjectConfig
+
+    init(viewModel: AppViewModel) {
+        self.viewModel = viewModel
+        _defaultConfig = State(initialValue: viewModel.defaultProjectConfig)
+    }
+
+    private var defaultPromptBinding: Binding<PromptTemplates> {
+        Binding(get: { defaultConfig.promptTemplates }, set: { defaultConfig.promptTemplates = $0 })
+    }
+
+    private var defaultStudyTermsBinding: Binding<[String]> {
+        Binding(get: { defaultConfig.customStudyTerms }, set: { defaultConfig.customStudyTerms = $0 })
+    }
+
+    private var defaultExportColumnsBinding: Binding<[ExportColumnConfig]> {
+        Binding(get: { defaultConfig.exportColumns }, set: { defaultConfig.exportColumns = $0 })
+    }
+
+    private var defaultPPTMappingsBinding: Binding<[PPTPlaceholderMapping]> {
+        Binding(get: { defaultConfig.pptPlaceholders }, set: { defaultConfig.pptPlaceholders = $0 })
+    }
+
+    private var defaultAvailableFields: [CanonicalField] {
+        ExportFieldCatalog.fields
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: "设置与数据源", subtitle: "管理模型、IF 数据集、分类体系、导入/导出模板") {
+                PageHeader(title: "系统设置", subtitle: "仅保留系统密钥与默认项目配置；Excel 导入格式会在导入时自动识别") {
                     HStack(spacing: 10) {
-                        Button("导入分类字典") { viewModel.importClassificationDictionary() }
-                        Button("保存配置") { viewModel.showToast("配置已保存") }
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppTheme.accent)
+                        Button("使用当前项目覆盖默认配置") {
+                            defaultConfig = viewModel.makeCurrentProjectConfig()
+                        }
+                        .accessibilityIdentifier("btn-use-current-default-config")
+                        Button("保存默认项目配置") {
+                            viewModel.saveDefaultProjectConfig(defaultConfig)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.accent)
+                        .accessibilityIdentifier("btn-save-default-config")
                     }
                 }
 
+                SectionTitle(title: "系统密钥")
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 0) {
                         SettingsSecureRow(
                             title: "LLM API Key",
-                            subtitle: "必填；用于调用云端 LLM 执行翻译与主题分析（未配置时无法进行 AI 加工）",
+                            subtitle: "必填；用于调用云端 LLM 执行翻译、研究设计和主题分类",
                             placeholder: "sk-...",
                             text: $viewModel.apiKey
                         )
                         Divider()
-                        SettingsActionRow(
-                            title: "AI 加工 Prompt",
-                            subtitle: "查看并自定义翻译 / 主题分类使用的 Prompt（仅云端 LLM 生效）",
-                            button: "查看 / 编辑"
-                        ) { showingPromptEditor = true }
-                        Divider()
-                        SettingInlineRow(title: "NCBI API Key", subtitle: "提升 PubMed 检索速率，遵守限流规则", trailing: "可选")
-                        Divider()
-                        SettingsActionRow(
-                            title: "IF / 分区数据集",
-                            subtitle: viewModel.impactFactorByJournal.isEmpty ? "未导入（用户自持版权数据）" : "已导入 \(viewModel.impactFactorByJournal.count) 条",
-                            button: "导入"
-                        ) { viewModel.importImpactFactors() }
-                        Divider()
-                        SettingsActionRow(
-                            title: "PPT 模板",
-                            subtitle: viewModel.pptTemplateURL?.lastPathComponent ?? "未选择：不提供内置模板，需上传您自备的 .pptx（导出时会再次提示选择）",
-                            button: "选择"
-                        ) { viewModel.chooseTemplate() }
+                        SettingsSecureRow(
+                            title: "NCBI API Key",
+                            subtitle: "可选；用于提升 PubMed 检索速率并减少限流",
+                            placeholder: "ncbi-...",
+                            text: $viewModel.ncbiApiKey
+                        )
                     }
                     .roundedPanel(padding: 0)
 
-                    VStack(spacing: 0) {
-                        SettingsActionRow(title: "导入文献", subtitle: "Excel / CSV，智能列映射不要求固定格式", button: "导入") { viewModel.importDocument() }
-                        Divider()
-                        SettingsActionRow(title: "导出交付 Excel", subtitle: "11 列，含摘要链接 / 原文链接", button: "导出") { viewModel.exportExcel() }
-                        Divider()
-                        SettingsActionRow(title: "导出 onepage PPT", subtitle: "使用客户自备 .pptx 模板填充", button: "导出") { viewModel.exportPPTX() }
-                        Divider()
-                        SettingInlineRow(title: "研究类型体系", subtitle: viewModel.customStudyTerms.isEmpty ? "未配置：AI 自动推断" : viewModel.customStudyTerms.joined(separator: " / "), trailing: "自定义")
-                        CustomStudyTermsEditor(viewModel: viewModel)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 12)
+                    VStack(alignment: .leading, spacing: 12) {
+                        InfoPanel(
+                            title: "当前项目配置在哪里修改",
+                            text: "当前项目的 AI 加工任务、自定义研究类型、导出列、PPT 占位符映射都属于项目配置，不在这里直接混编辑。AI 加工相关配置在“AI 加工”页维护，导出模板和 PPT 模板在“产出生成”页维护。",
+                            tags: ["当前项目", "项目级配置", "与默认值分离"]
+                        )
+                        VStack(spacing: 0) {
+                            SettingInlineRow(title: "当前项目", subtitle: viewModel.selectedProject.name, trailing: "项目级")
+                            Divider()
+                            SettingInlineRow(title: "当前 IF / 分区数据", subtitle: viewModel.impactFactorByJournal.isEmpty ? "未导入" : "已导入 \(viewModel.impactFactorByJournal.count) 条", trailing: "当前项目")
+                            Divider()
+                            SettingInlineRow(title: "当前 PPT 样式模板", subtitle: viewModel.pptVisualTemplate.name, trailing: "当前项目")
+                            Divider()
+                            SettingInlineRow(title: "当前自定义加工任务", subtitle: viewModel.customTasks.isEmpty ? "未配置" : "已配置 \(viewModel.customTasks.count) 个任务", trailing: "当前项目")
+                            Divider()
+                            SettingsActionRow(title: "跳转到 AI 加工页", subtitle: "维护当前项目的自定义 AI 加工任务、任务开关和加工队列。", button: "前往") {
+                                viewModel.navigate(to: .enrich)
+                            }
+                            Divider()
+                            SettingsActionRow(title: "跳转到产出生成页", subtitle: "维护当前项目的 Excel 导出模板、PPT 占位符映射和 PPT 模板。", button: "前往") {
+                                viewModel.navigate(to: .slides)
+                            }
+                        }
+                        .roundedPanel(padding: 0)
+                        .accessibilityIdentifier("panel-current-project-config")
                     }
-                    .roundedPanel(padding: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
+                SectionTitle(title: "默认项目配置")
                 HStack(alignment: .top, spacing: 16) {
-                    ImportFieldGuidePanel(fields: viewModel.canonicalFieldOptions)
-                    InfoPanel(
-                        title: "数据源状态",
-                        text: "文献 \(viewModel.articles.count) 篇已入库；IF 数据 \(viewModel.impactFactorByJournal.count) 条；PPT 模板 \(viewModel.pptTemplateURL == nil ? "未配置" : "已配置")。所有数据本地持久化，可离线使用。",
-                        tags: ["本地持久化", "客户自定义", "可追溯"]
-                    )
+                    VStack(alignment: .leading, spacing: 12) {
+                        InfoPanel(
+                            title: "默认值说明",
+                            text: "这里编辑的是“新建项目时自动继承”的默认项目配置。修改后不会强制覆盖已有项目；如需用当前项目覆盖默认值，请使用顶部的“使用当前项目覆盖默认配置”。",
+                            tags: ["新项目继承", "不会回写旧项目", "与当前项目分离"]
+                        )
+                        PromptTemplateEditorPanel(templates: defaultPromptBinding)
+                        StudyTermsEditorPanel(terms: defaultStudyTermsBinding)
+                        PPTVisualTemplateEditorPanel(template: Binding(get: { defaultConfig.pptVisualTemplate }, set: { defaultConfig.pptVisualTemplate = $0 }))
+                        VStack(spacing: 0) {
+                            SettingsActionRow(
+                                title: "默认 IF / 分区数据集",
+                                subtitle: defaultConfig.impactFactorByJournal.isEmpty ? "未导入" : "已导入 \(defaultConfig.impactFactorByJournal.count) 条",
+                                button: "导入"
+                            ) {
+                                if let table = viewModel.importImpactFactorTableFromPanel() {
+                                    defaultConfig.impactFactorByJournal = table
+                                }
+                            }
+                            Divider()
+                            SettingInlineRow(title: "默认 PPT 模板来源", subtitle: "产品内置可编辑模板", trailing: "无需上传")
+                        }
+                        .roundedPanel(padding: 0)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        ExportTemplateEditorPanel(columns: defaultExportColumnsBinding, availableFields: defaultAvailableFields, previewDrafts: [viewModel.previewDraftForTemplates])
+                        PPTTemplateEditorPanel(mappings: defaultPPTMappingsBinding, availableFields: defaultAvailableFields, previewDraft: viewModel.previewDraftForTemplates)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(24)
-        }
-        .sheet(isPresented: $showingPromptEditor) {
-            PromptEditorSheet(viewModel: viewModel)
         }
     }
 }
@@ -789,6 +965,7 @@ struct InsightDetailView: View {
 
 struct SlidePreviewDetailView: View {
     let article: Article
+    let template: PPTVisualTemplate
 
     var body: some View {
         ScrollView {
@@ -797,7 +974,7 @@ struct SlidePreviewDetailView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
-                SlidePreviewCard(article: article)
+                SlidePreviewCard(article: article, template: template)
             }
             .padding(20)
         }

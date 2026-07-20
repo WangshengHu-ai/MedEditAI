@@ -17,6 +17,7 @@ final class ViewModelTests: XCTestCase {
         var lastSort: PubMedSort?
         var lastRetstart: Int?
         var lastRetmax: Int?
+        var lastQuery: String?
 
         init(ids: [String] = [], records: [PubMedRecord] = []) {
             self.allIDs = ids
@@ -24,6 +25,7 @@ final class ViewModelTests: XCTestCase {
         }
 
         func search(query: String, sort: PubMedSort, retstart: Int, retmax: Int) async throws -> PubMedSearchResult {
+            lastQuery = query
             lastSort = sort
             lastRetstart = retstart
             lastRetmax = retmax
@@ -35,6 +37,37 @@ final class ViewModelTests: XCTestCase {
             let matched = records.filter { pmids.contains($0.pmid) }
             return matched.isEmpty ? records : matched
         }
+    }
+
+    private struct MockLLM: LLMProviding {
+        var customTaskResult: String = "风险分层：高"
+        var delayNanos: UInt64 = 0
+
+        func translate(_ request: TranslationRequest) async throws -> TranslationResult {
+            if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
+            return TranslationResult(titleCN: "中文-\(request.title)", abstractCN: "中文摘要", keywordsCN: request.keywords)
+        }
+
+        func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult {
+            TopicClassificationResult(topicPath: candidatePaths.first ?? "未分类", confidence: 0.9)
+        }
+
+        func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult {
+            StudyTypeClassificationResult(studyType: "队列研究", confidence: 0.82)
+        }
+
+        func runCustomTask(promptTemplate: String, title: String, abstract: String, keywords: [String]) async throws -> String {
+            customTaskResult
+        }
+    }
+
+    private struct FailingLLM: LLMProviding {
+        struct Boom: LocalizedError { var errorDescription: String? { "模拟失败" } }
+
+        func translate(_ request: TranslationRequest) async throws -> TranslationResult { throw Boom() }
+        func classifyTopic(title: String, abstract: String, candidatePaths: [String]) async throws -> TopicClassificationResult { throw Boom() }
+        func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult { throw Boom() }
+        func runCustomTask(promptTemplate: String, title: String, abstract: String, keywords: [String]) async throws -> String { throw Boom() }
     }
 
     private func record(pmid: String, title: String = "Study", journal: String = "Heart Rhythm") -> PubMedRecord {
@@ -51,6 +84,13 @@ final class ViewModelTests: XCTestCase {
             .appendingPathComponent("mededitai-tests-\(UUID().uuidString).json")
         let store = LibraryStore(fileURL: tempURL)
         return AppViewModel(pubmed: pubmed, store: store)
+    }
+
+    private func makeViewModel(pubmed: PubMedFetching = MockPubMed(), llmProvider: LLMProviding) -> AppViewModel {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mededitai-tests-\(UUID().uuidString).json")
+        let store = LibraryStore(fileURL: tempURL)
+        return AppViewModel(pubmed: pubmed, llmProvider: llmProvider, store: store)
     }
 
     // MARK: - FP1 空状态默认（不再污染 demo 数据）
@@ -150,7 +190,7 @@ final class ViewModelTests: XCTestCase {
 
         vm.loadSampleData()
         XCTAssertFalse(vm.queue.isEmpty)
-        XCTAssertLessThanOrEqual(vm.queue.count, 6)
+        XCTAssertEqual(vm.queue.count, vm.articleCount)
         XCTAssertEqual(vm.queue.first?.title, SampleData.articles.first?.titleEN)
     }
 
@@ -176,6 +216,31 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(query.contains("\"pulsed field ablation\"[Title/Abstract]"))
         XCTAssertTrue(query.contains("\"atrial fibrillation\"[Title/Abstract]"))
         XCTAssertTrue(query.contains("2024:3000[pdat]"))
+    }
+
+    // MARK: - 起始年份支持不指定
+
+    func testDefaultYearFromIsNilAndQueryOmitsYearClause() {
+        let vm = makeViewModel()
+        XCTAssertNil(vm.yearFrom)
+        vm.searchText = "pulsed field ablation"
+        XCTAssertFalse(vm.displayedQuery.contains("[pdat]"))
+    }
+
+    func testChangeYearFromNilClearsYearFilterAndRefetches() async {
+        let ids = (1...5).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
+
+        await vm.changeYearFrom(2020)
+        XCTAssertEqual(vm.yearFrom, 2020)
+        XCTAssertTrue((mock.lastQuery ?? "").contains("2020:3000[pdat]"))
+
+        await vm.changeYearFrom(nil)
+        XCTAssertNil(vm.yearFrom)
+        XCTAssertFalse(vm.displayedQuery.contains("[pdat]"))
+        XCTAssertFalse((mock.lastQuery ?? "").contains("[pdat]"))   // 清除后重新检索，不再限制年份
     }
 
     // MARK: - FP8 加工任务开关
@@ -353,6 +418,31 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(vm.totalPages, 2)           // ceil(60 / 50)
     }
 
+    func testChangeYearFromRefetchesImmediately() async {
+        let ids = (1...10).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
+        await vm.runSearch()
+
+        await vm.changeYearFrom(2012)
+        XCTAssertEqual(vm.yearFrom, 2012)
+        XCTAssertEqual(vm.currentPage, 0)
+        XCTAssertTrue((mock.lastQuery ?? "").contains("2012:3000[pdat]"))
+    }
+
+    func testPageSizeSupports1000() async {
+        let ids = (1...120).map(String.init)
+        let mock = MockPubMed(ids: ids, records: ids.map { record(pmid: $0) })
+        let vm = makeViewModel(pubmed: mock)
+        vm.searchText = "ablation"
+        await vm.runSearch()
+        await vm.changePageSize(1000)
+        XCTAssertEqual(vm.pageSize, 1000)
+        XCTAssertEqual(mock.lastRetmax, 1000)
+        XCTAssertEqual(vm.articleCount, 120)
+    }
+
     func testChangePageSizeWithoutActiveSearchJustResetsPaging() async {
         let vm = makeViewModel()
         await vm.changePageSize(10)
@@ -390,6 +480,42 @@ final class ViewModelTests: XCTestCase {
         let vm = makeViewModel()
         vm.renameProject(id: vm.selectedProjectID, to: "心电生理库")
         XCTAssertEqual(vm.selectedProject.name, "心电生理库")
+    }
+
+    func testNewProjectInheritsDefaultConfig() {
+        let vm = makeViewModel()
+        var config = ProjectConfig.default
+        config.customStudyTerms = ["动物实验"]
+        config.promptTemplates.translationSystem = "default-system"
+        config.pptVisualTemplate = PPTVisualTemplate(name: "默认一页纸模板", accentHex: "#112233", fontFamily: "Songti SC", titleFontSize: 26)
+        vm.saveDefaultProjectConfig(config)
+        let projectID = vm.addProject(name: "继承项目")
+        XCTAssertEqual(vm.selectedProjectID, projectID)
+        XCTAssertEqual(vm.customStudyTerms, ["动物实验"])
+        XCTAssertEqual(vm.promptTemplates.translationSystem, "default-system")
+        XCTAssertEqual(vm.pptVisualTemplate.name, "默认一页纸模板")
+        XCTAssertEqual(vm.pptTemplateName, "默认一页纸模板")
+        XCTAssertEqual(vm.pptVisualTemplate.fontFamily, "Songti SC")
+        XCTAssertEqual(vm.pptVisualTemplate.titleFontSize, 26)
+    }
+
+    func testUpdatingPPTVisualTemplatePersistsAsCurrentProjectTemplate() {
+        let vm = makeViewModel()
+        let template = PPTVisualTemplate(
+            name: "产品内模板", accentHex: "#445566", metadataBackgroundHex: "#F0F1F2", ctaText: "查看原文",
+            fontFamily: "Helvetica Neue", topicFontSize: 20, titleFontSize: 28, subtitleFontSize: 18,
+            bodyFontSize: 14, metadataFontSize: 12, captionFontSize: 10
+        )
+        vm.updatePPTVisualTemplate(template)
+        XCTAssertEqual(vm.pptTemplateName, "产品内模板")
+        XCTAssertEqual(vm.pptVisualTemplate.accentHex, "#445566")
+        XCTAssertEqual(vm.pptVisualTemplate.fontFamily, "Helvetica Neue")
+        XCTAssertEqual(vm.pptVisualTemplate.titleFontSize, 28)
+        XCTAssertEqual(vm.pptVisualTemplate.captionFontSize, 10)
+        let currentConfig = vm.makeCurrentProjectConfig()
+        XCTAssertEqual(currentConfig.pptVisualTemplate.name, "产品内模板")
+        XCTAssertEqual(currentConfig.pptVisualTemplate.fontFamily, "Helvetica Neue")
+        XCTAssertEqual(currentConfig.pptVisualTemplate.bodyFontSize, 14)
     }
 
     func testDeleteProjectKeepsAtLeastOne() {
@@ -436,6 +562,15 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(vm.pendingReviewCount, 0)   // 不再待复核
     }
 
+    func testMarkArticlesReviewedClearsPendingReview() {
+        let vm = makeViewModel()
+        vm.loadSampleData()
+        let low = vm.articles.filter { $0.confidence == .low }
+        XCTAssertEqual(low.count, 1)
+        vm.markArticlesReviewed(ids: low.map(\.id))
+        XCTAssertEqual(vm.pendingReviewCount, 0)
+    }
+
     // MARK: - FP21 AI 加工仅处理选中并写回卡片
 
     func testEnrichmentProcessesOnlySelectedArticles() async {
@@ -477,6 +612,102 @@ final class ViewModelTests: XCTestCase {
         ]
         vm.replaceDrafts(DocumentService.articles(from: rows))
         await vm.runEnrichment()
+        XCTAssertTrue(vm.articles.allSatisfy { !$0.titleCN.isEmpty })
+    }
+
+    // MARK: - AI 加工页面始终展示完整文献列表
+
+    func testEnrichmentQueueShowsFullListWhenOnlySubsetSelected() async {
+        let vm = makeViewModel(llmProvider: MockLLM())
+        vm.apiKey = "sk-mock"
+        let rows = [["标题"], ["Alpha study"], ["Beta study"], ["Gamma study"]]
+        vm.replaceDrafts(DocumentService.articles(from: rows))
+        XCTAssertEqual(vm.articleCount, 3)
+
+        let target = vm.articles[1]
+        vm.toggleExportSelection(target)   // 仅选中第二篇进行加工
+        await vm.runEnrichment()
+
+        // AI 加工页应始终展示当前项目的完整文献列表，而不是只展示本次加工的子集。
+        XCTAssertEqual(vm.queue.count, 3)
+        XCTAssertEqual(vm.queue.filter { $0.status == .done }.count, 1)
+        XCTAssertEqual(vm.queue.filter { $0.status == .waiting }.count, 2)
+    }
+
+    func testEnrichmentQueueDoesNotReuseStaleCacheAfterProjectSwitch() async {
+        let vm = makeViewModel(llmProvider: MockLLM())
+        vm.apiKey = "sk-mock"
+        vm.replaceDrafts(DocumentService.articles(from: [["标题"], ["Project A Study"]]))
+        await vm.runEnrichment()
+        XCTAssertEqual(vm.queue.count, 1)
+        XCTAssertEqual(vm.queue.first?.title, "Project A Study")
+        XCTAssertEqual(vm.queue.first?.status, .done)
+
+        vm.addProject(name: "第二项目")   // 自动切换到新项目（空文献库）
+        vm.replaceDrafts(DocumentService.articles(from: [["标题"], ["Project B Study"]]))   // 与项目A数量相同但内容不同
+
+        // 不应复用项目A遗留的队列标题/状态（即使数量恰巧相同）。
+        XCTAssertEqual(vm.queue.count, 1)
+        XCTAssertEqual(vm.queue.first?.title, "Project B Study")
+        XCTAssertEqual(vm.queue.first?.status, .waiting)
+    }
+
+    func testCustomTasksRoundTripToArticleAndExportFields() async {
+        let vm = makeViewModel(llmProvider: MockLLM())
+        vm.apiKey = "sk-mock"
+        vm.tasks = vm.tasks.map { task in
+            var updated = task
+            updated.isEnabled = task.key == "translate"
+            return updated
+        }
+        vm.customTasks = [CustomProcessingTask(title: "风险分层", outputFieldKey: "riskLevel", prompt: "{title}")]
+        let rows = [["标题"], ["Pulsed field ablation outcomes"]]
+        vm.replaceDrafts(DocumentService.articles(from: rows))
+
+        await vm.runEnrichment()
+
+        XCTAssertEqual(vm.articles.first?.customFields["riskLevel"], "风险分层：高")
+        XCTAssertTrue(vm.availableExportFields.contains { $0.id == "riskLevel" })
+    }
+
+    func testEnrichmentFailureShowsFailedQueueItem() async {
+        let vm = makeViewModel(llmProvider: FailingLLM())
+        vm.apiKey = "sk-mock"
+        vm.tasks = vm.tasks.map { task in
+            var updated = task
+            updated.isEnabled = task.key == "translate"
+            return updated
+        }
+        vm.replaceDrafts(DocumentService.articles(from: [["标题"], ["Only One"]]))
+
+        await vm.runEnrichment()
+
+        XCTAssertEqual(vm.queue.first?.status, .failed)
+        XCTAssertTrue(vm.toastMessage?.contains("文献处理失败") == true)
+    }
+
+    func testEnrichmentSupportsPauseAndResume() async {
+        let vm = makeViewModel(llmProvider: MockLLM(delayNanos: 150_000_000))
+        vm.apiKey = "sk-mock"
+        vm.tasks = vm.tasks.map { task in
+            var updated = task
+            updated.isEnabled = task.key == "translate"
+            return updated
+        }
+        let rows = [["标题"], ["One"], ["Two"]]
+        vm.replaceDrafts(DocumentService.articles(from: rows))
+
+        let work = Task { await vm.runEnrichment() }
+        try? await Task.sleep(nanoseconds: 40_000_000)
+        vm.pauseEnrichment()
+        try? await Task.sleep(nanoseconds: 220_000_000)
+        XCTAssertTrue(vm.isEnrichmentPaused)
+        XCTAssertTrue(vm.queue.contains { $0.status == .paused })
+        vm.resumeEnrichment()
+        await work.value
+
+        XCTAssertTrue(vm.enrichmentCompleted)
+        XCTAssertFalse(vm.isBusy)
         XCTAssertTrue(vm.articles.allSatisfy { !$0.titleCN.isEmpty })
     }
 

@@ -122,6 +122,20 @@ enum DocumentService {
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// 按用户自定义的导出列配置（表头 + 取值字段，任意顺序/任意列名）渲染表格行，供实时预览与真实导出复用。
+    static func exportRows(articles: [ArticleDraft], columns: [ExportColumnConfig]) -> [[String]] {
+        var output: [[String]] = [columns.map(\.header)]
+        for (index, article) in articles.enumerated() {
+            let values = ArticleProcessor.renderExportFieldValues(article: article, sequence: index + 1)
+            output.append(columns.map { values[$0.field] ?? "" })
+        }
+        return output
+    }
+
+    static func exportExcel(articles: [ArticleDraft], columns: [ExportColumnConfig], to url: URL) throws {
+        try XLSXWriter.write(rows: exportRows(articles: articles, columns: columns), to: url)
+    }
+
     // MARK: - PPT
 
     static func slidePlaceholderValues(for article: ArticleDraft) -> [String: String] {
@@ -140,8 +154,30 @@ enum DocumentService {
         ]
     }
 
+    /// 按用户自定义的 PPT 占位符映射（占位符文本 + 取值字段，可增删/改名）渲染占位符→值字典，供实时预览与真实导出复用。
+    static func slidePlaceholderValues(for article: ArticleDraft, mapping: [PPTPlaceholderMapping]) -> [String: String] {
+        let values = ArticleProcessor.renderExportFieldValues(article: article, sequence: 0)
+        var result: [String: String] = [:]
+        for item in mapping {
+            result[item.placeholder] = values[item.field] ?? ""
+        }
+        return result
+    }
+
     static func exportPPTX(articles: [ArticleDraft], templateURL: URL, to url: URL) throws {
         let slides = articles.map(slidePlaceholderValues(for:))
+        try PPTXTemplateFiller.fill(templateURL: templateURL, slides: slides, outputURL: url)
+    }
+
+    static func exportPPTX(articles: [ArticleDraft], templateURL: URL, mapping: [PPTPlaceholderMapping], to url: URL) throws {
+        let slides = articles.map { slidePlaceholderValues(for: $0, mapping: mapping) }
+        try PPTXTemplateFiller.fill(templateURL: templateURL, slides: slides, outputURL: url)
+    }
+
+    static func exportPPTX(articles: [ArticleDraft], mapping: [PPTPlaceholderMapping], visualTemplate: PPTVisualTemplate, to url: URL) throws {
+        let templateURL = try BuiltInPPTXTemplate.makeTemplate(visualTemplate: visualTemplate)
+        defer { try? FileManager.default.removeItem(at: templateURL) }
+        let slides = articles.map { slidePlaceholderValues(for: $0, mapping: mapping) }
         try PPTXTemplateFiller.fill(templateURL: templateURL, slides: slides, outputURL: url)
     }
 }

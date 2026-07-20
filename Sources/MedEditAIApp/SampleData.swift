@@ -11,7 +11,7 @@ enum SampleData {
         .init(title: "文献总量", value: "127", detail: "+24 本周期新增", symbol: "chart.bar.fill"),
         .init(title: "已翻译", value: "119", detail: "93.7% 已完成", symbol: "character.book.closed.fill"),
         .init(title: "待复核", value: "11", detail: "建议优先处理", symbol: "clock.badge.exclamationmark.fill"),
-        .init(title: "模板数", value: "4", detail: "含 onepage 客户模板", symbol: "square.on.square.intersection.dashed")
+        .init(title: "模板数", value: "4", detail: "含产品内可编辑 onepage 模板", symbol: "square.on.square.intersection.dashed")
     ]
 
     static let alerts: [AlertItem] = [
@@ -23,7 +23,7 @@ enum SampleData {
     static let quickActions: [QuickAction] = [
         .init(title: "从 PubMed 开始检索", description: "输入关键词或高级检索式，批量拉取文献元数据", symbol: "magnifyingglass", gradient: [AppTheme.accent, AppTheme.accentMint], destination: .search),
         .init(title: "导入已有 Excel 清单", description: "智能列映射，不要求固定格式，可复用映射模板", symbol: "square.and.arrow.down.on.square.fill", gradient: [AppTheme.accentBlue, Color(red: 0.33, green: 0.66, blue: 1.0)], destination: .library),
-        .init(title: "生成 onepage 交付物", description: "使用客户自备 .pptx 模板和自定义 Excel 导出模板", symbol: "play.rectangle.on.rectangle.fill", gradient: [AppTheme.orange, Color(red: 0.98, green: 0.6, blue: 0.27)], destination: .slides)
+        .init(title: "生成 onepage 交付物", description: "使用产品内可编辑的 PPT 模板和自定义 Excel 导出模板", symbol: "play.rectangle.on.rectangle.fill", gradient: [AppTheme.orange, Color(red: 0.98, green: 0.6, blue: 0.27)], destination: .slides)
     ]
 
     static let topicTree: [TopicNode] = [

@@ -90,9 +90,54 @@ final class CoreFunctionalTests: XCTestCase {
         XCTAssertTrue(updated.hasSuffix("</Types>"))
     }
 
+    // MARK: - Built-in PPT visual template (font family + font size)
+    func testBuiltInShapeConvertsPointSizeToHundredthsAndEmbedsFontFamily() {
+        let xml = BuiltInPPTXTemplate.shape(
+            id: 9, name: "Title", x: 0, y: 0, cx: 100, cy: 100,
+            text: "Hello & <World>", fontFamily: "PingFang SC", fontSize: 11.5, bold: true, color: "112233"
+        )
+        XCTAssertTrue(xml.contains("sz=\"1150\""))
+        XCTAssertTrue(xml.contains("b=\"1\""))
+        XCTAssertTrue(xml.contains("typeface=\"PingFang SC\""))
+        XCTAssertTrue(xml.contains("Hello &amp; &lt;World&gt;"))
+    }
+
+    func testBuiltInThemeXMLUsesTemplateFontFamily() {
+        let xml = BuiltInPPTXTemplate.themeXML(accentHex: "#0E9F9F", fontFamily: "Songti SC")
+        XCTAssertTrue(xml.contains("<a:majorFont><a:latin typeface=\"Songti SC\"/>"))
+        XCTAssertTrue(xml.contains("<a:minorFont><a:latin typeface=\"Songti SC\"/>"))
+        XCTAssertTrue(xml.contains("accent1><a:srgbClr val=\"0E9F9F\""))
+    }
+
+    func testBuiltInSlideXMLAppliesPerElementFontSizesAndFamily() {
+        let template = PPTVisualTemplate(
+            fontFamily: "Helvetica Neue",
+            topicFontSize: 20, titleFontSize: 30, subtitleFontSize: 18,
+            bodyFontSize: 13, metadataFontSize: 12, captionFontSize: 10
+        )
+        let xml = BuiltInPPTXTemplate.slideXML(visualTemplate: template)
+        XCTAssertTrue(xml.contains("typeface=\"Helvetica Neue\""))
+        XCTAssertTrue(xml.contains("sz=\"2000\""))  // topic 20pt
+        XCTAssertTrue(xml.contains("sz=\"3000\""))  // title 30pt
+        XCTAssertTrue(xml.contains("sz=\"1800\""))  // subtitle 18pt
+        XCTAssertTrue(xml.contains("sz=\"1300\""))  // body 13pt
+        XCTAssertTrue(xml.contains("sz=\"1200\""))  // metadata / button 12pt
+        XCTAssertTrue(xml.contains("sz=\"1000\""))  // citation 10pt
+        XCTAssertTrue(xml.contains("sz=\"900\""))   // url = caption - 1pt
+        XCTAssertTrue(xml.contains("sz=\"800\""))   // disclaimer = caption - 2pt
+    }
+
+    func testBuiltInPPTXTemplateGeneratesFillableFile() throws {
+        let url = try BuiltInPPTXTemplate.makeTemplate(visualTemplate: PPTVisualTemplate(fontFamily: "Arial", titleFontSize: 24))
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(url.pathExtension, "pptx")
+    }
+
     // MARK: - LLM Mock provider
     struct MockLLM: LLMProviding {
         var studyTypeResult: StudyTypeClassificationResult = StudyTypeClassificationResult(studyType: "队列研究", confidence: 0.82)
+        var customTaskResult: String = "自定义任务结果"
 
         func translate(_ request: TranslationRequest) async throws -> TranslationResult {
             TranslationResult(titleCN: "脉冲电场消融", abstractCN: "摘要测试", keywordsCN: ["消融"])
@@ -102,6 +147,9 @@ final class CoreFunctionalTests: XCTestCase {
         }
         func classifyStudyType(title: String, abstract: String, candidateTerms: [String]) async throws -> StudyTypeClassificationResult {
             studyTypeResult
+        }
+        func runCustomTask(promptTemplate: String, title: String, abstract: String, keywords: [String]) async throws -> String {
+            customTaskResult
         }
     }
 
@@ -127,7 +175,7 @@ final class CoreFunctionalTests: XCTestCase {
     }
 
     // MARK: - Enrichment pipeline
-    func testEnrichmentPipelineWithMockProvider() async {
+    func testEnrichmentPipelineWithMockProvider() async throws {
         let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [
             ClassificationNode(title: "Science of PFA", level: 1, children: [
                 ClassificationNode(title: "原理", level: 2, children: [
@@ -146,7 +194,7 @@ final class CoreFunctionalTests: XCTestCase {
             authors: ["Bates AP", "Smith B"], journal: "Heart Rhythm", pubDate: "2026",
             doi: "10.1/x", keywords: ["ablation"], meshTerms: [], references: []
         )
-        let drafts = await service.enrichBatch(records: [record])
+        let drafts = try await service.enrichBatch(records: [record])
         XCTAssertEqual(drafts.count, 1)
         XCTAssertEqual(drafts[0].impactFactor, "5.8")
         XCTAssertEqual(drafts[0].url, "https://doi.org/10.1/x")
@@ -156,7 +204,7 @@ final class CoreFunctionalTests: XCTestCase {
         XCTAssertEqual(drafts[0].evidence, "AI 推断")
     }
 
-    func testEnrichmentPrefersLocalCustomTermOverAI() async {
+    func testEnrichmentPrefersLocalCustomTermOverAI() async throws {
         let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [])
         let service = EnrichmentService(
             llm: MockLLM(studyTypeResult: StudyTypeClassificationResult(studyType: "不相干结果", confidence: 0.9)),
@@ -169,13 +217,13 @@ final class CoreFunctionalTests: XCTestCase {
             authors: ["A"], journal: "Heart Rhythm", pubDate: "2026",
             doi: nil, keywords: [], meshTerms: [], references: []
         )
-        let drafts = await service.enrichBatch(records: [record])
+        let drafts = try await service.enrichBatch(records: [record])
         // 本地自定义词条命中优先于 AI，不应使用 Mock 返回的不相干结果。
         XCTAssertEqual(drafts[0].studyType, "electroporation")
         XCTAssertEqual(drafts[0].evidence, "自定义")
     }
 
-    func testEnrichmentLeavesStudyTypeBlankWhenAICannotDetermine() async {
+    func testEnrichmentLeavesStudyTypeBlankWhenAICannotDetermine() async throws {
         let scheme = ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: [])
         let service = EnrichmentService(
             llm: MockLLM(studyTypeResult: StudyTypeClassificationResult(studyType: "", confidence: 0.4)),
@@ -188,10 +236,27 @@ final class CoreFunctionalTests: XCTestCase {
             authors: ["A"], journal: "Heart Rhythm", pubDate: "2026",
             doi: nil, keywords: [], meshTerms: [], references: []
         )
-        let drafts = await service.enrichBatch(records: [record])
+        let drafts = try await service.enrichBatch(records: [record])
         // 未配置自定义词条且 AI 也无法判断时，留空而非编造。
         XCTAssertEqual(drafts[0].studyType, "")
         XCTAssertEqual(drafts[0].evidence, "")
+    }
+
+    func testEnrichmentWritesCustomTaskOutputs() async throws {
+        let service = EnrichmentService(
+            llm: MockLLM(customTaskResult: "风险分层：高"),
+            topicScheme: ClassificationScheme(name: "PFA", type: .topic, isHierarchical: true, items: []),
+            customStudyTerms: [],
+            impactFactorByJournal: [:],
+            customTasks: [CustomProcessingTask(title: "风险分层", outputFieldKey: "riskLevel", prompt: "{title}")]
+        )
+        let record = PubMedRecord(
+            pmid: "4", title: "Custom task article", abstract: "text",
+            authors: ["A"], journal: "Heart Rhythm", pubDate: "2026",
+            doi: nil, keywords: [], meshTerms: [], references: []
+        )
+        let drafts = try await service.enrichBatch(records: [record])
+        XCTAssertEqual(drafts[0].customFields?["riskLevel"], "风险分层：高")
     }
 
     // MARK: - DocumentService import/export
@@ -244,6 +309,27 @@ final class CoreFunctionalTests: XCTestCase {
         XCTAssertEqual(values["{{title_cn}}"], "中")
         XCTAssertEqual(values["{{if}}"], "5.8")
         XCTAssertEqual(values["{{url}}"], "https://x")
+    }
+
+    func testCustomExportRowsAndPlaceholderMappingUseDynamicFields() {
+        var draft = ArticleDraft(
+            topic: "原理", titleEN: "EN", titleCN: "中", abstractEN: "a", abstractCN: "摘要",
+            citation: "cite", authors: "Bates", date: "2026", studyType: "综述", journal: "HR",
+            impactFactor: "5.8", quartile: nil, pmid: "1", url: "https://x", confidence: 0.9,
+            product: "PFA", evidence: "e", note: ""
+        )
+        draft.customFields = ["riskLevel": "高"]
+        let columns = [
+            ExportColumnConfig(header: "风险分层", field: "riskLevel"),
+            ExportColumnConfig(header: "标题", field: "titleEN")
+        ]
+        let rows = DocumentService.exportRows(articles: [draft], columns: columns)
+        XCTAssertEqual(rows[0], ["风险分层", "标题"])
+        XCTAssertEqual(rows[1], ["高", "EN"])
+
+        let mapping = [PPTPlaceholderMapping(placeholder: "{{risk}}", field: "riskLevel")]
+        let placeholders = DocumentService.slidePlaceholderValues(for: draft, mapping: mapping)
+        XCTAssertEqual(placeholders["{{risk}}"], "高")
     }
 
     // MARK: - Multi-article PubMed parsing

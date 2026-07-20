@@ -368,6 +368,12 @@ struct QueueRow: View {
                 Text(statusText)
                     .font(.system(size: 11.5))
                     .foregroundStyle(AppTheme.textSecondary)
+                if let detail = item.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(color)
+                        .lineLimit(2)
+                }
             }
             Spacer()
             TagView(text: tagText, tint: color)
@@ -380,6 +386,8 @@ struct QueueRow: View {
         case .done: "checkmark.circle.fill"
         case .running: "arrow.triangle.2.circlepath.circle.fill"
         case .waiting: "clock.fill"
+        case .paused: "pause.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
         }
     }
 
@@ -388,6 +396,8 @@ struct QueueRow: View {
         case .done: AppTheme.ok
         case .running: AppTheme.accent
         case .waiting: AppTheme.textSecondary
+        case .paused: AppTheme.warn
+        case .failed: AppTheme.danger
         }
     }
 
@@ -396,6 +406,8 @@ struct QueueRow: View {
         case .done: "已完成"
         case .running: "运行中"
         case .waiting: "等待中"
+        case .paused: "已暂停"
+        case .failed: "处理失败"
         }
     }
 
@@ -404,6 +416,8 @@ struct QueueRow: View {
         case .done: "完成"
         case .running: "处理中"
         case .waiting: "排队"
+        case .paused: "暂停"
+        case .failed: "失败"
         }
     }
 }
@@ -482,22 +496,33 @@ struct SlideThumbnail: View {
 
 struct SlidePreviewCard: View {
     let article: Article
+    let template: PPTVisualTemplate
+
+    private var accent: Color { Color(hex: template.accentHex) }
+    private var metadataFill: Color { Color(hex: template.metadataBackgroundHex) }
+
+    /// 根据模板字号与默认基准的比例，缩放预览卡上的字体大小。默认值下与之前硬编码的视觉效果一致。
+    private func scaledFont(_ templateSize: Double, baseTemplate: Double, basePreview: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let ratio = baseTemplate > 0 ? CGFloat(templateSize / baseTemplate) : 1
+        let size = max(6, basePreview * ratio)
+        return .custom(template.fontFamily, size: size).weight(weight)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(article.topic)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(AppTheme.accent)
+                .font(scaledFont(template.topicFontSize, baseTemplate: 18, basePreview: 12, weight: .bold))
+                .foregroundStyle(accent)
             Rectangle()
-                .fill(LinearGradient(colors: [AppTheme.accent, .clear], startPoint: .leading, endPoint: .trailing))
+                .fill(LinearGradient(colors: [accent, .clear], startPoint: .leading, endPoint: .trailing))
                 .frame(height: 2)
                 .padding(.top, 6)
                 .padding(.bottom, 12)
             Text(article.titleEN)
-                .font(.system(size: 14, weight: .bold))
+                .font(scaledFont(template.titleFontSize, baseTemplate: 22, basePreview: 14, weight: .bold))
                 .lineSpacing(3)
             Text(article.titleCN)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(scaledFont(template.subtitleFontSize, baseTemplate: 16, basePreview: 12.5, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
 
@@ -510,16 +535,16 @@ struct SlidePreviewCard: View {
                     Text("期刊：\(article.journal)")
                     Text("IF：\(article.impactFactor)")
                 }
-                .font(.system(size: 9.5))
+                .font(scaledFont(template.metadataFontSize, baseTemplate: 11, basePreview: 9.5))
                 .padding(10)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.accent.opacity(0.08)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.accent.opacity(0.16)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(metadataFill))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.16)))
                 .frame(width: 220, alignment: .trailing)
             }
             .padding(.top, 10)
 
-            Text("摘要：\(article.abstractCN)")
-                .font(.system(size: 11.5, weight: .medium))
+            Text("\(template.abstractPrefix)\(article.abstractCN)")
+                .font(scaledFont(template.bodyFontSize, baseTemplate: 12, basePreview: 11.5, weight: .medium))
                 .lineSpacing(4)
                 .lineLimit(8)
                 .padding(.top, 16)
@@ -528,23 +553,23 @@ struct SlidePreviewCard: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Divider()
-                Text("参考文献：\(article.citation)")
-                    .font(.system(size: 8.5, weight: .semibold))
+                Text("\(template.citationPrefix)\(article.citation)")
+                    .font(scaledFont(template.captionFontSize, baseTemplate: 9, basePreview: 8.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
-                Text("点击查看原文链接")
-                    .font(.system(size: 10, weight: .bold))
+                Text(template.ctaText)
+                    .font(scaledFont(template.metadataFontSize, baseTemplate: 11, basePreview: 10, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(Capsule().fill(AppTheme.accent))
+                    .background(Capsule().fill(accent))
                 Text(article.url)
-                    .font(.system(size: 8.5))
+                    .font(scaledFont(template.captionFontSize, baseTemplate: 9, basePreview: 8.5))
                     .foregroundStyle(AppTheme.accentBlue)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("*版权问题暂不提供直接下载，如有学术交流需要，请联系内部人员")
-                    .font(.system(size: 8))
+                Text(template.disclaimerText)
+                    .font(scaledFont(template.captionFontSize, baseTemplate: 9, basePreview: 8))
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 10)
@@ -564,11 +589,11 @@ struct SlideSettingsPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionTitle(title: "模板设置")
                 .padding(.bottom, 10)
-            SettingInlineRow(title: "客户模板", subtitle: templateName, trailing: "A4 纵向")
+            SettingInlineRow(title: "产品内模板", subtitle: templateName, trailing: "A4 纵向")
             Divider()
             SettingInlineRow(title: "分组维度", subtitle: "按四级主题生成独立 deck", trailing: "topic")
             Divider()
-            SettingInlineRow(title: "导出字段", subtitle: "含超链接与版权免责声明", trailing: "编辑")
+            SettingInlineRow(title: "导出字段", subtitle: "含按钮文案、版权说明和占位符映射", trailing: "UI 编辑")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .roundedPanel()
@@ -688,69 +713,435 @@ struct MappingPanel: View {
     }
 }
 
-/// 解释“导入映射”的含义，并列出底层数据模型字段，帮助用户理解每一列应映射到哪里。
-struct ImportFieldGuidePanel: View {
-    let fields: [CanonicalField]
+struct ExportTemplateEditorPanel: View {
+    @Binding var columns: [ExportColumnConfig]
+    let availableFields: [CanonicalField]
+    let previewDrafts: [ArticleDraft]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionTitle(title: "导入映射说明")
-            Text("导入映射 = 您的 Excel 列名（源列）映射到系统底层字段（target key）。导入时，系统会先自动猜测，您可在“确认导入字段映射”中逐列修改。")
+            HStack {
+                SectionTitle(title: "Excel 导出模板")
+                Spacer()
+                Button {
+                    columns.append(ExportColumnConfig(header: "新列", field: availableFields.first(where: { !$0.id.isEmpty })?.id ?? "titleEN"))
+                } label: {
+                    Label("添加列", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Text("列顺序、表头、字段和超链接都可以自定义。修改后右侧预览会实时刷新。")
                 .font(.system(size: 12.5))
                 .foregroundStyle(AppTheme.textSecondary)
-                .lineSpacing(4)
 
-            ScrollView {
-                VStack(spacing: 8) {
-                    ForEach(fields.filter { !$0.id.isEmpty }) { field in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                Text(field.label)
-                                    .font(.system(size: 13.5, weight: .semibold))
-                                Text(priorityTitle(for: field.priority))
-                                    .font(.system(size: 10.5, weight: .bold))
-                                    .foregroundStyle(priorityColor(for: field.priority))
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(Capsule().fill(priorityColor(for: field.priority).opacity(0.12)))
-                                Spacer()
-                                Text(field.id)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(AppTheme.textTertiary)
+            VStack(spacing: 8) {
+                ForEach($columns) { $column in
+                    HStack(spacing: 8) {
+                        TextField("表头", text: $column.header)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                        Picker("字段", selection: $column.field) {
+                            ForEach(availableFields, id: \.id) { field in
+                                Text(field.label).tag(field.id)
                             }
-
-                            Text(field.hint)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .lineSpacing(3)
                         }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.line))
+                        .pickerStyle(.menu)
+                        .frame(width: 170)
+                        Toggle("超链接", isOn: $column.isHyperlink)
+                            .toggleStyle(.switch)
+                        Spacer()
+                        Button {
+                            columns.removeAll { $0.id == column.id }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
+                }
+            }
+
+            ExportTemplatePreviewTable(columns: columns, previewDrafts: previewDrafts)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
+    }
+}
+
+struct ExportTemplatePreviewTable: View {
+    let columns: [ExportColumnConfig]
+    let previewDrafts: [ArticleDraft]
+
+    private var rows: [[String]] {
+        let drafts = Array(previewDrafts.prefix(3))
+        return DocumentService.exportRows(articles: drafts, columns: columns)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("实时预览")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                        HStack(spacing: 0) {
+                            ForEach(row.indices, id: \.self) { columnIndex in
+                                Text(row[columnIndex].isEmpty ? "—" : row[columnIndex])
+                                    .font(.system(size: 11.5))
+                                    .frame(minWidth: 110, alignment: .leading)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                    .background(index == 0 ? AppTheme.accent.opacity(0.10) : Color.clear)
+                                    .overlay(RoundedRectangle(cornerRadius: 0).stroke(AppTheme.line.opacity(index == 0 ? 0.6 : 0.3), lineWidth: 0.5))
+                            }
+                        }
                     }
                 }
-                .padding(.vertical, 2)
             }
-            .frame(maxHeight: 340)
+            .frame(maxHeight: 170)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
+    }
+}
+
+struct PPTTemplateEditorPanel: View {
+    @Binding var mappings: [PPTPlaceholderMapping]
+    let availableFields: [CanonicalField]
+    let previewDraft: ArticleDraft?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle(title: "PPT 占位符映射")
+                Spacer()
+                Button {
+                    mappings.append(PPTPlaceholderMapping(placeholder: "{{new_placeholder}}", field: availableFields.first(where: { !$0.id.isEmpty })?.id ?? "titleEN"))
+                } label: {
+                    Label("添加占位符", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Text("占位符文本和字段都可改名；右侧会实时展示模板填充结果。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+
+            VStack(spacing: 8) {
+                ForEach($mappings) { $mapping in
+                    HStack(spacing: 8) {
+                        TextField("占位符", text: $mapping.placeholder)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 180)
+                        Picker("字段", selection: $mapping.field) {
+                            ForEach(availableFields, id: \.id) { field in
+                                Text(field.label).tag(field.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 170)
+                        Spacer()
+                        Button {
+                            mappings.removeAll { $0.id == mapping.id }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
+                }
+            }
+
+            PPTTemplatePreviewCard(mapping: mappings, previewDraft: previewDraft)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
+    }
+}
+
+struct PPTTemplatePreviewCard: View {
+    let mapping: [PPTPlaceholderMapping]
+    let previewDraft: ArticleDraft?
+
+    private var values: [String: String] {
+        guard let previewDraft else { return [:] }
+        return DocumentService.slidePlaceholderValues(for: previewDraft, mapping: mapping)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("实时预览")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(mapping.prefix(8)) { item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(item.placeholder)
+                            .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(width: 180, alignment: .leading)
+                        Text(values[item.placeholder] ?? "—")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(AppTheme.panelSecondary))
+        }
+    }
+}
+
+struct PPTVisualTemplateEditorPanel: View {
+    @Binding var template: PPTVisualTemplate
+
+    private static let fontFamilyPresets = ["PingFang SC", "Songti SC", "STHeiti Sans", "Helvetica Neue", "Arial", "Georgia", "Times New Roman", "Menlo"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(title: "PPT 样式模板")
+            Text("直接在产品里编辑 onepage PPT 的名称、颜色、字体、各部分字号、按钮文案和页脚说明；无需上传外部 .pptx。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+
+            HStack(spacing: 8) {
+                LabeledField("模板名称", text: $template.name)
+                LabeledField("主色", text: $template.accentHex)
+                LabeledField("信息框背景", text: $template.metadataBackgroundHex)
+            }
+            HStack(spacing: 8) {
+                LabeledField("按钮文案", text: $template.ctaText)
+                LabeledField("摘要前缀", text: $template.abstractPrefix)
+                LabeledField("引文前缀", text: $template.citationPrefix)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("字体")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                HStack(spacing: 8) {
+                    TextField("字体名称，如 PingFang SC", text: $template.fontFamily)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("field-ppt-font-family")
+                    Menu("常用字体") {
+                        ForEach(Self.fontFamilyPresets, id: \.self) { name in
+                            Button(name) { template.fontFamily = name }
+                        }
+                    }
+                    .accessibilityIdentifier("menu-ppt-font-family-presets")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("字号")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                fontSizeRow(label: "主题标签", value: $template.topicFontSize, identifier: "topic")
+                fontSizeRow(label: "英文标题", value: $template.titleFontSize, identifier: "title")
+                fontSizeRow(label: "中文标题", value: $template.subtitleFontSize, identifier: "subtitle")
+                fontSizeRow(label: "正文摘要", value: $template.bodyFontSize, identifier: "body")
+                fontSizeRow(label: "信息框", value: $template.metadataFontSize, identifier: "metadata")
+                fontSizeRow(label: "引文/脚注", value: $template.captionFontSize, identifier: "caption")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("版权说明")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                TextEditor(text: $template.disclaimerText)
+                    .font(.system(size: 12.5))
+                    .frame(height: 70)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .roundedPanel()
     }
 
-    private func priorityTitle(for priority: ImportFieldPriority) -> String {
-        switch priority {
-        case .required: "必需"
-        case .recommended: "建议"
-        case .optional: "可选"
+    private func fontSizeRow(label: String, value: Binding<Double>, identifier: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12.5))
+                .frame(width: 90, alignment: .leading)
+            Stepper(value: value, in: 6...48, step: 1) {
+                Text("\(Int(value.wrappedValue)) pt")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .frame(width: 50, alignment: .leading)
+            }
+            .accessibilityIdentifier("stepper-ppt-font-\(identifier)")
         }
     }
+}
 
-    private func priorityColor(for priority: ImportFieldPriority) -> Color {
-        switch priority {
-        case .required: .red
-        case .recommended: AppTheme.accent
-        case .optional: AppTheme.textSecondary
+struct PromptTemplateEditorPanel: View {
+    @Binding var templates: PromptTemplates
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(title: "AI Prompt 模板")
+            Text("占位符：{title} {abstract} {keywords} {candidates}。修改后会立即影响当前项目的 AI 加工。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+            promptField("翻译 · System", text: $templates.translationSystem, height: 44)
+            promptField("翻译 · User", text: $templates.translationUser, height: 150)
+            promptField("主题分类 · System", text: $templates.classificationSystem, height: 44)
+            promptField("主题分类 · User", text: $templates.classificationUser, height: 150)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
+    }
+
+    private func promptField(_ label: String, text: Binding<String>, height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .textCase(.uppercase)
+            TextEditor(text: text)
+                .font(.system(size: 12.5, design: .monospaced))
+                .frame(height: height)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+        }
+    }
+}
+
+struct StudyTermsEditorPanel: View {
+    @Binding var terms: [String]
+    @State private var newTerm: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(title: "研究类型词条")
+            if terms.isEmpty {
+                Text("未配置自定义词条时，AI 会根据标题和摘要自动推断；仍无法判断则留空。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                ForEach(terms, id: \.self) { term in
+                    HStack(spacing: 8) {
+                        Text(term)
+                            .font(.system(size: 12.5))
+                        Spacer()
+                        Button {
+                            terms.removeAll { $0 == term }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(AppTheme.panelSecondary))
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("新增研究类型词条", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                Button("添加") {
+                    let trimmed = newTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty, !terms.contains(trimmed) else { return }
+                    terms.append(trimmed)
+                    newTerm = ""
+                }
+                .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
+    }
+}
+
+struct CustomProcessingTasksEditorPanel: View {
+    @Binding var tasks: [CustomProcessingTask]
+    @State private var newTitle: String = ""
+    @State private var newOutputKey: String = ""
+    @State private var newPrompt: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(title: "自定义 AI 加工任务")
+            Text("用户可定义 Prompt 和产出字段，任务会与翻译/研究设计/主题分类并行运行。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(AppTheme.textSecondary)
+
+            ForEach($tasks) { $task in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField("任务名称", text: $task.title)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("输出字段", text: $task.outputFieldKey)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 160)
+                        Toggle("启用", isOn: $task.isEnabled)
+                            .toggleStyle(.switch)
+                        Button {
+                            tasks.removeAll { $0.id == task.id }
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    TextEditor(text: $task.prompt)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .frame(height: 90)
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.panelSecondary))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    TextField("任务名称", text: $newTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("field-custom-task-title")
+                    TextField("输出字段", text: $newOutputKey)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 160)
+                        .accessibilityIdentifier("field-custom-task-output")
+                }
+                TextEditor(text: $newPrompt)
+                    .font(.system(size: 12.5, design: .monospaced))
+                    .frame(height: 96)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
+                    .accessibilityIdentifier("field-custom-task-prompt")
+                Button("添加自定义任务") {
+                    let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let key = newOutputKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let prompt = newPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty, !key.isEmpty, !prompt.isEmpty else { return }
+                    tasks.append(CustomProcessingTask(title: title, outputFieldKey: key, prompt: prompt))
+                    newTitle = ""
+                    newOutputKey = ""
+                    newPrompt = ""
+                }
+                .buttonStyle(.bordered)
+                .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newOutputKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || newPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("btn-add-custom-task")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .roundedPanel()
     }
 }
 

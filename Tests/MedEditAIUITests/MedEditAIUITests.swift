@@ -20,6 +20,12 @@ final class MedEditAIUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    private func loadSampleData(in app: XCUIApplication) {
+        let loadButton = app.buttons["btn-load-sample"]
+        XCTAssertTrue(loadButton.waitForExistence(timeout: 10))
+        loadButton.click()
+    }
+
     // MARK: - E2E1 启动与窗口
 
     func testAppLaunchesWithSidebar() {
@@ -72,16 +78,79 @@ final class MedEditAIUITests: XCTestCase {
 
     // MARK: - E2E5 项目管理：新建项目
 
-    func testAddProjectCreatesNewProject() {
+    func testAddProjectCreatesNamedProject() {
         let app = launchApp()
-        // 底部具名按钮，直接创建自动命名的新项目（无对话框，规避 alert 偶发性）
         let addButton = app.buttons["btn-add-project"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 15))
         addButton.click()
 
-        // 侧栏应出现“新项目”行（label 包含匹配，兼容按钮/静态文本等元素类型）
-        let predicate = NSPredicate(format: "label CONTAINS %@", "新项目")
+        let nameField = app.textFields["项目名称"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        nameField.click()
+        nameField.typeText("肿瘤免疫")
+        app.buttons["创建"].click()
+
+        let predicate = NSPredicate(format: "label CONTAINS %@", "肿瘤免疫")
         let created = app.descendants(matching: .any).matching(predicate).firstMatch
         XCTAssertTrue(created.waitForExistence(timeout: 10), "应创建并显示新项目")
+    }
+
+    func testSearchShowsManualYearAndSelectingResultUpdatesDetail() {
+        let app = launchApp()
+        loadSampleData(in: app)
+        element("nav-search", in: app).click()
+
+        XCTAssertTrue(app.textFields["field-year-from"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.popUpButtons["picker-page-size"].waitForExistence(timeout: 10))
+
+        let articleTitle = "Latest Advances and Ongoing Challenges in Pulsed Field Ablation"
+        XCTAssertTrue(app.staticTexts[articleTitle].waitForExistence(timeout: 10))
+        app.staticTexts[articleTitle].click()
+        XCTAssertTrue(app.staticTexts["脉冲电场消融的最新进展与持续挑战"].waitForExistence(timeout: 10))
+    }
+
+    func testLibraryCanFilterLowConfidenceAndMarkReviewed() {
+        let app = launchApp()
+        loadSampleData(in: app)
+        element("nav-library", in: app).click()
+
+        let lowConfidenceTitle = "Evaluation of variable inter-pulse delays for pulsed field ablation"
+        XCTAssertTrue(app.buttons["btn-low-confidence-filter"].waitForExistence(timeout: 10))
+        app.buttons["btn-low-confidence-filter"].click()
+        XCTAssertTrue(app.staticTexts[lowConfidenceTitle].waitForExistence(timeout: 10))
+
+        let markReviewed = app.buttons["btn-mark-reviewed"]
+        XCTAssertTrue(markReviewed.isEnabled)
+        markReviewed.click()
+        XCTAssertTrue(app.staticTexts["该主题下暂无文献"].waitForExistence(timeout: 10))
+    }
+
+    func testEnrichShowsFullQueueAndCustomTaskEditor() {
+        let app = launchApp()
+        loadSampleData(in: app)
+        element("nav-enrich", in: app).click()
+
+        XCTAssertTrue(app.buttons["btn-run-enrichment"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Internal atrial shock delivery by standard diagnostic electrophysiology catheters in goats"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["field-custom-task-title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["btn-add-custom-task"].waitForExistence(timeout: 10))
+    }
+
+    func testSlidesAndSettingsExposeTemplateEditorsAndDefaultConfig() {
+        let app = launchApp()
+        loadSampleData(in: app)
+
+        element("nav-slides", in: app).click()
+        XCTAssertTrue(app.staticTexts["PPT 样式模板"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Excel 导出模板"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["PPT 占位符映射"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["field-ppt-font-family"].waitForExistence(timeout: 10), "应支持编辑 PPT 字体")
+        XCTAssertTrue(element("stepper-ppt-font-title", in: app).waitForExistence(timeout: 10), "应支持编辑标题字号")
+
+        app.buttons["btn-settings"].click()
+        XCTAssertTrue(app.buttons["btn-save-default-config"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["当前项目配置在哪里修改"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["导出交付 Excel"].exists)
+        XCTAssertFalse(app.buttons["导出 onepage PPT"].exists)
     }
 }

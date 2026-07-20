@@ -5,12 +5,16 @@ struct StoredProject: Codable, Identifiable, Hashable {
     var name: String
     var colorHex: String
     var articles: [ArticleDraft]
+    /// 项目自身的配置（Prompt/IF/研究类型/分类字典/PPT模板/导出列/占位符/自定义任务）。
+    /// Optional 是为了兼容此前版本持久化的项目数据（没有该字段时按 nil 处理，由上层用默认项目配置迁移）。
+    var config: ProjectConfig?
 
-    init(id: UUID = UUID(), name: String, colorHex: String, articles: [ArticleDraft] = []) {
+    init(id: UUID = UUID(), name: String, colorHex: String, articles: [ArticleDraft] = [], config: ProjectConfig? = nil) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
         self.articles = articles
+        self.config = config
     }
 }
 
@@ -20,6 +24,10 @@ struct LibrarySnapshot: Codable {
     var impactFactorByJournal: [String: String]
     var promptTemplates: PromptTemplates?
     var topicScheme: ClassificationScheme?
+    var apiKey: String?
+    var ncbiApiKey: String?
+    /// 新建项目时使用的默认项目配置模板；在设置页的“默认项目配置”区域编辑。
+    var defaultProjectConfig: ProjectConfig?
 
     static let empty = LibrarySnapshot(projects: [], customStudyTerms: [], impactFactorByJournal: [:], promptTemplates: nil)
 
@@ -28,13 +36,19 @@ struct LibrarySnapshot: Codable {
         customStudyTerms: [String],
         impactFactorByJournal: [String: String],
         promptTemplates: PromptTemplates? = nil,
-        topicScheme: ClassificationScheme? = nil
+        topicScheme: ClassificationScheme? = nil,
+        apiKey: String? = nil,
+        ncbiApiKey: String? = nil,
+        defaultProjectConfig: ProjectConfig? = nil
     ) {
         self.projects = projects
         self.customStudyTerms = customStudyTerms
         self.impactFactorByJournal = impactFactorByJournal
         self.promptTemplates = promptTemplates
         self.topicScheme = topicScheme
+        self.apiKey = apiKey
+        self.ncbiApiKey = ncbiApiKey
+        self.defaultProjectConfig = defaultProjectConfig
     }
 }
 
