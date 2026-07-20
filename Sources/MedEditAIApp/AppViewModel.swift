@@ -83,7 +83,8 @@ final class AppViewModel: ObservableObject {
         self.llmProvider = llmProvider
         self.store = store
         let snapshot = store.load()
-        self.defaultProjectConfig = snapshot.defaultProjectConfig ?? .default
+        let resolvedDefaultConfig = snapshot.defaultProjectConfig ?? .default
+        self.defaultProjectConfig = resolvedDefaultConfig
         self.impactFactorByJournal = snapshot.impactFactorByJournal
         self.promptTemplates = snapshot.promptTemplates ?? .default
         self.customStudyTerms = snapshot.customStudyTerms
@@ -91,7 +92,7 @@ final class AppViewModel: ObservableObject {
         self.apiKey = snapshot.apiKey ?? ""
         self.ncbiApiKey = snapshot.ncbiApiKey ?? ""
         if snapshot.projects.isEmpty {
-            let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [], config: self.defaultProjectConfig)
+            let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [], config: resolvedDefaultConfig)
             self.storedProjects = [defaultProject]
             self.selectedProjectID = defaultProject.id
         } else {
@@ -689,6 +690,20 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+    /// 打开文件选择面板导入 IF/分区数据表，仅返回解析结果，不修改当前项目的 `impactFactorByJournal`；
+    /// 供“默认项目配置”等场景使用——由调用方自行决定写入哪个配置对象（如 `defaultConfig`）。
+    func importImpactFactorTableFromPanel() -> [String: String]? {
+        guard let url = openPanel(extensions: ["xlsx", "csv"]) else { return nil }
+        do {
+            let table = try DocumentService.importImpactFactors(from: url)
+            showToast("已导入 IF 数据：\(table.count) 条")
+            return table
+        } catch {
+            showToast("IF 导入失败：\(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// 设置 IF 表并回填到现有文献（可单元测试）。
     func setImpactFactors(_ table: [String: String], toast: String? = nil) {
         impactFactorByJournal = table
@@ -942,6 +957,11 @@ final class AppViewModel: ObservableObject {
 
     func updatePPTPlaceholderMappings(_ mappings: [PPTPlaceholderMapping]) {
         pptPlaceholderMappings = mappings
+        persist()
+    }
+
+    func updateCustomTasks(_ tasks: [CustomProcessingTask]) {
+        customTasks = tasks
         persist()
     }
 
