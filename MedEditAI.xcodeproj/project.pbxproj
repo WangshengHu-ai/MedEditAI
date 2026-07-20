@@ -32,8 +32,11 @@
 		2A1B0000000000000000B009 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F009 /* Persistence.swift */; };
 		2A1B0000000000000000B010 /* DocumentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000F010 /* DocumentService.swift */; };
 		2A1D00000000000000000001 /* ImportAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1D00000000000000000011 /* ImportAnalyzer.swift */; };
+		2A1E00000000000000000002 /* BuiltInPPTXTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1E00000000000000000001 /* BuiltInPPTXTemplate.swift */; };
+		2A1E00000000000000000004 /* ProjectConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1E00000000000000000003 /* ProjectConfig.swift */; };
 		2A1A0000000000000000000F /* CoreServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1A00000000000000000027 /* CoreServicesTests.swift */; };
 		2A1B0000000000000000BA01 /* CoreFunctionalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */; };
+		2A1E00000000000000000006 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1E00000000000000000005 /* ViewModelTests.swift */; };
 		2A1C00000000000000000008 /* MedEditAIUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1C00000000000000000018 /* MedEditAIUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -65,8 +68,11 @@
 		2A1B0000000000000000F009 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
 		2A1B0000000000000000F010 /* DocumentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentService.swift; sourceTree = "<group>"; };
 		2A1D00000000000000000011 /* ImportAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportAnalyzer.swift; sourceTree = "<group>"; };
+		2A1E00000000000000000001 /* BuiltInPPTXTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInPPTXTemplate.swift; sourceTree = "<group>"; };
+		2A1E00000000000000000003 /* ProjectConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConfig.swift; sourceTree = "<group>"; };
 		2A1A00000000000000000027 /* CoreServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreServicesTests.swift; sourceTree = "<group>"; };
 		2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFunctionalTests.swift; sourceTree = "<group>"; };
+		2A1E00000000000000000005 /* ViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTests.swift; sourceTree = "<group>"; };
 		2A1A00000000000000000028 /* MedEditAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = MedEditAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2A1C00000000000000000018 /* MedEditAIUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedEditAIUITests.swift; sourceTree = "<group>"; };
 		2A1C00000000000000000028 /* MedEditAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedEditAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -118,10 +124,13 @@
 			2A1B0000000000000000F009 /* Persistence.swift */,
 			2A1B0000000000000000F010 /* DocumentService.swift */,
 			2A1D00000000000000000011 /* ImportAnalyzer.swift */,
+			2A1E00000000000000000001 /* BuiltInPPTXTemplate.swift */,
+			2A1E00000000000000000003 /* ProjectConfig.swift */,
 		); path = Core; sourceTree = "<group>"; };
 		2A1A00000000000000000037 /* MedEditAITests */ = {isa = PBXGroup; children = (
 			2A1A00000000000000000027 /* CoreServicesTests.swift */,
 			2A1B0000000000000000FA01 /* CoreFunctionalTests.swift */,
+			2A1E00000000000000000005 /* ViewModelTests.swift */,
 		); path = MedEditAITests; sourceTree = SOURCE_ROOT; };
 		2A1C00000000000000000037 /* MedEditAIUITests */ = {isa = PBXGroup; children = (
 			2A1C00000000000000000018 /* MedEditAIUITests.swift */,
@@ -180,6 +189,7 @@
 		2A1A00000000000000000044 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 			2A1A0000000000000000000F /* CoreServicesTests.swift in Sources */,
 			2A1B0000000000000000BA01 /* CoreFunctionalTests.swift in Sources */,
+			2A1E00000000000000000006 /* ViewModelTests.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		2A1A00000000000000000041 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 			2A1A00000000000000000001 /* MedEditAIApp.swift in Sources */,
@@ -207,6 +217,8 @@
 			2A1B0000000000000000B009 /* Persistence.swift in Sources */,
 			2A1B0000000000000000B010 /* DocumentService.swift in Sources */,
 			2A1D00000000000000000001 /* ImportAnalyzer.swift in Sources */,
+			2A1E00000000000000000002 /* BuiltInPPTXTemplate.swift in Sources */,
+			2A1E00000000000000000004 /* ProjectConfig.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		2A1C00000000000000000044 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 			2A1C00000000000000000008 /* MedEditAIUITests.swift in Sources */,

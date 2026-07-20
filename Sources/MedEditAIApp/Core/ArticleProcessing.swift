@@ -65,7 +65,7 @@ enum ArticleProcessor {
     /// 与 `renderExportRow` 不同：以“规范字段 id”（见 `ExportFieldCatalog`）为 key，而非固定中文表头，
     /// 供用户自定义 Excel 导出列/PPT 占位符映射时按字段取值。
     static func renderExportFieldValues(article: ArticleDraft, sequence: Int) -> [String: String] {
-        var values = [
+        var values: [String: String] = [
             "sequence": "\(sequence)",
             "topic": article.topic,
             "titleEN": article.titleEN,
