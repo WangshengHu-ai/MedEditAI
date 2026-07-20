@@ -541,6 +541,7 @@ final class AppViewModel: ObservableObject {
 
         let service = enrichmentService()
         var processed = 0
+        var failedCount = 0
         // 队列始终覆盖当前项目的完整文献列表：不在本次加工范围内的文献保留其现有状态（已处理/未处理），
         // 避免“仅勾选部分文献加工”后，AI 加工页只显示被选中的子集、看不到完整列表。
         let targetIndexSet = Set(targetIndices)
@@ -574,6 +575,7 @@ final class AppViewModel: ObservableObject {
             } catch {
                 let message = error.localizedDescription
                 enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .failed, detail: message)
+                failedCount += 1
                 showToast("文献处理失败：\(message)")
             }
         }
@@ -581,7 +583,11 @@ final class AppViewModel: ObservableObject {
         selectedArticleID = articles.first(where: { targetIDs.contains($0.id) })?.id ?? selectedArticleID
         enrichmentCompleted = true
         persist()
-        showToast("批处理完成：\(processed) 篇已更新 AI 结果")
+        if failedCount == 0 {
+            showToast("批处理完成：\(processed) 篇已更新 AI 结果")
+        } else {
+            showToast("批处理完成：\(processed) 篇成功，\(failedCount) 篇文献处理失败")
+        }
     }
 
     // MARK: - 待复核：手动修改并保存
@@ -841,16 +847,21 @@ final class AppViewModel: ObservableObject {
 #endif
 
     private func enrichmentService() -> EnrichmentService {
-        let provider = OpenAICompatibleLLM(
-            apiKey: apiKey, 
-            session: {
+        let provider: LLMProviding
+        if let injected = llmProvider {
+            provider = injected
+        } else {
+            provider = OpenAICompatibleLLM(
+                apiKey: apiKey, 
+                session: {
 #if DEBUG
-                if let s = sessionForTesting { return s }
+                    if let s = sessionForTesting { return s }
 #endif
-                return .shared
-            }(),
-            templates: promptTemplates
-        )
+                    return .shared
+                }(),
+                templates: promptTemplates
+            )
+        }
         return EnrichmentService(
             llm: provider,
             topicScheme: Self.scheme(from: topicTreeNodes),

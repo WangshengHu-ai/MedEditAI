@@ -88,7 +88,7 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         nameField.click()
         nameField.typeText("肿瘤免疫")
-        app.buttons["创建"].click()
+        app.alerts.buttons["创建"].click()
 
         let predicate = NSPredicate(format: "label CONTAINS %@", "肿瘤免疫")
         let created = app.descendants(matching: .any).matching(predicate).firstMatch
