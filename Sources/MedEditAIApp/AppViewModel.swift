@@ -45,6 +45,7 @@ final class AppViewModel: ObservableObject {
     /// 上一次构建 `enrichmentQueue` 时对应的文献 id 序列；用于判断缓存的队列是否仍与当前项目的文献集合一致（
     /// 否则切换项目/重新导入搜索后会错误地复用上一批的题目与状态）。
     private var enrichmentQueueDraftIDs: [String] = []
+    private var enrichmentQueueProjectID: UUID?
     @Published var isEnrichmentPaused: Bool = false
     @Published var enrichmentCompleted: Bool = false
 
@@ -293,7 +294,11 @@ final class AppViewModel: ObservableObject {
 
     var queue: [QueueItem] {
         let currentIDs = drafts.enumerated().map { draftID($1, index: $0) }
-        if !enrichmentQueue.isEmpty, enrichmentQueueDraftIDs == currentIDs { return enrichmentQueue }
+        if !enrichmentQueue.isEmpty,
+           enrichmentQueueDraftIDs == currentIDs,
+           enrichmentQueueProjectID == selectedProjectID {
+            return enrichmentQueue
+        }
         return drafts.map { draft in
             let title = draft.titleEN.isEmpty ? draft.titleCN : draft.titleEN
             return QueueItem(title: title.isEmpty ? "(无标题)" : title, status: draft.abstractCN.isEmpty ? .waiting : .done)
@@ -555,6 +560,7 @@ final class AppViewModel: ObservableObject {
             return QueueItem(title: displayTitle, status: draft.abstractCN.isEmpty ? .waiting : .done)
         }
         enrichmentQueueDraftIDs = working.indices.map { draftID(working[$0], index: $0) }
+        enrichmentQueueProjectID = selectedProjectID
 
         for index in targetIndices {
             while isEnrichmentPaused {

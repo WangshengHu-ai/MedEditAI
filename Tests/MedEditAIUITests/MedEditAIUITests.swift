@@ -104,8 +104,9 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(app.popUpButtons["picker-page-size"].waitForExistence(timeout: 10))
 
         let articleTitle = "Latest Advances and Ongoing Challenges in Pulsed Field Ablation"
-        XCTAssertTrue(app.staticTexts[articleTitle].waitForExistence(timeout: 10))
-        app.staticTexts[articleTitle].click()
+        let articleButton = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", articleTitle)).firstMatch
+        XCTAssertTrue(articleButton.waitForExistence(timeout: 10))
+        articleButton.click()
         XCTAssertTrue(app.staticTexts["脉冲电场消融的最新进展与持续挑战"].waitForExistence(timeout: 10))
     }
 
