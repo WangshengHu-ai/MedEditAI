@@ -930,10 +930,16 @@ final class AppViewModel: ObservableObject {
     func exportPPTX() {
         guard !drafts.isEmpty else { showToast("暂无可导出的文献"); return }
         guard let output = savePanel(suggestedName: "MedEditAI-onepage.pptx") else { return }
+        // 用 PPT 画板生成交付物：每篇文献一页，元素按绝对坐标渲染为可编辑文本框/图片，导出与预览一致。
+        let targetArticles: [Article] = selectedForExport.isEmpty ? articles : articles.filter { selectedForExport.contains($0.id) }
+        let slides: [[RenderedCanvasElement]] = targetArticles.enumerated().map { index, article in
+            pptCanvas.elements.map { element in
+                RenderedCanvasElement(element: element, text: PPTCanvasPreview.resolvedText(for: element, article: article, sequence: index + 1))
+            }
+        }
         do {
-            let mapping = activeProjectConfig().pptPlaceholders
-            try DocumentService.exportPPTX(articles: articlesToExport, mapping: mapping, visualTemplate: pptVisualTemplate, to: output)
-            showToast("已导出 onepage PPT：\(articlesToExport.count) 页")
+            try CanvasPPTXExporter.export(canvas: pptCanvas, slides: slides, to: output)
+            showToast("已导出 PPT 画板：\(slides.count) 页")
         } catch {
             showToast("导出失败：\(error.localizedDescription)")
         }

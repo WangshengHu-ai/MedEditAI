@@ -791,6 +791,19 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(AppViewModel.canvasFieldValue("sequence", from: article, sequence: 3), "3")
     }
 
+    func testCanvasPPTXExportProducesValidZip() throws {
+        let canvas = PPTCanvasTemplate.default
+        let slides: [[RenderedCanvasElement]] = [
+            canvas.elements.map { RenderedCanvasElement(element: $0, text: "示例文字") }
+        ]
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("canvas-\(UUID().uuidString).pptx")
+        defer { try? FileManager.default.removeItem(at: out) }
+        try CanvasPPTXExporter.export(canvas: canvas, slides: slides, to: out)
+        let data = try Data(contentsOf: out)
+        XCTAssertGreaterThan(data.count, 100)
+        XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B])   // PPTX 即 ZIP，魔数应为 "PK"
+    }
+
     // MARK: - FP22 导入自动识别文献字段
 
     func testAutoRecognizeFillsEmptyFields() {
