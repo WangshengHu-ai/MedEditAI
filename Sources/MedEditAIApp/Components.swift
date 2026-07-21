@@ -1174,26 +1174,57 @@ struct CustomProcessingTasksEditorPanel: View {
 }
 
 /// 手动新增一条主题分类路径（无需导入 Excel），格式：主题>次级>三级>四级，也支持只输入单个词条。
-struct ManualTopicEntryField: View {
+/// 主题分类词条编辑器：展示已配置的主题词条并支持移除，同时支持手动新增。
+/// 主题分类是一个扁平的词条列表（不是四级菜单）；AI 加工会在这些词条中为每篇文献选择最匹配的一条。
+struct TopicTermsEditor: View {
     @ObservedObject var viewModel: AppViewModel
-    @State private var text: String = ""
+    @State private var newTerm: String = ""
 
     var body: some View {
-        HStack(spacing: 8) {
-            TextField("手动新增分类，如：主题>次级>三级>四级", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12.5))
-                .onSubmit(add)
-                .accessibilityIdentifier("field-add-topic-path")
-            Button("添加") { add() }
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityIdentifier("btn-add-topic-path")
+        VStack(alignment: .leading, spacing: 8) {
+            if viewModel.topicTerms.isEmpty {
+                Text("未配置主题词条：AI 加工时主题分类会留空。可在下方逐条添加，或载入示例数据。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(viewModel.topicTerms, id: \.self) { term in
+                        HStack(spacing: 6) {
+                            Text(term)
+                                .font(.system(size: 12.5))
+                            Spacer()
+                            Button {
+                                viewModel.removeTopicTerm(term)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppTheme.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("btn-remove-topic-term-\(term)")
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(AppTheme.panelSecondary))
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("新增主题词条，如：原理与生物物理学", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12.5))
+                    .onSubmit(add)
+                    .accessibilityIdentifier("field-add-topic-term")
+                Button("添加") { add() }
+                    .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("btn-add-topic-term")
+            }
         }
     }
 
     private func add() {
-        guard viewModel.addManualTopicPath(text) else { return }
-        text = ""
+        guard viewModel.addTopicTerm(newTerm) else { return }
+        newTerm = ""
     }
 }
 
@@ -1259,9 +1290,9 @@ struct TopicTreePanel: View {
     var body: some View {
         if nodes.isEmpty {
             EmptyStateView(
-                icon: "list.bullet.indent",
-                title: "暂无分类体系",
-                message: "在设置中导入分类字典（四级菜单），或载入示例数据。"
+                icon: "list.bullet",
+                title: "暂无主题词条",
+                message: "在设置详情页添加主题分类词条，或载入示例数据。"
             )
         } else {
             VStack(alignment: .leading, spacing: 6) {

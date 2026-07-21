@@ -524,7 +524,7 @@ struct LibraryDetailView: View {
                 DetailBlock(title: "AI 字段") {
                     VStack(spacing: 8) {
                         AIFieldRow(label: "研究设计", value: article.studyType, trailing: article.confidence.title)
-                        AIFieldRow(label: "主题分类", value: article.topic, trailing: "四级菜单")
+                        AIFieldRow(label: "主题分类", value: article.topic, trailing: "词条列表")
                         AIFieldRow(label: "研究产品", value: article.product, trailing: "词典识别")
                         AIFieldRow(label: "证据等级", value: article.evidence, trailing: "自动联动")
                     }
@@ -665,9 +665,9 @@ struct EnrichView: View {
                 HStack(alignment: .top, spacing: 14) {
                     InfoPanel(
                         title: "分类体系",
-                        text: viewModel.topicTree.isEmpty
-                            ? "尚未导入主题分类体系，可在设置中导入四级分类字典。"
-                            : "已加载主题分类体系，共 \(viewModel.topicTree.count) 个顶层主题。",
+                        text: viewModel.topicTerms.isEmpty
+                            ? "尚未配置主题分类词条，可在设置详情页逐条添加。"
+                            : "已配置主题分类词条，共 \(viewModel.topicTerms.count) 个词条。",
                         tags: []
                     )
                     InfoPanel(
@@ -1001,12 +1001,15 @@ struct SettingsDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("主题分类（四级菜单）")
+                Text("主题分类（词条列表）")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
-                ManualTopicEntryField(viewModel: viewModel)
-                TopicTreePanel(nodes: viewModel.topicTree)
+                Text("主题分类是一个扁平的词条列表，不是四级菜单。AI 加工会在这些词条中为每篇文献选择最匹配的一条。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+                TopicTermsEditor(viewModel: viewModel)
+                    .roundedPanel()
             }
             .padding(20)
         }

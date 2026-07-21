@@ -904,23 +904,21 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(vm2.customStudyTerms.isEmpty)
     }
 
-    func testAddManualTopicPathBuildsNestedNodesAndPersists() {
+    func testAddAndRemoveTopicTermPersists() {
         let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("manual-topic-\(UUID().uuidString).json")
+            .appendingPathComponent("topic-terms-\(UUID().uuidString).json")
         let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
-        XCTAssertTrue(vm1.addManualTopicPath("主题X>次级Y>三级Z>叶子W"))
-        XCTAssertFalse(vm1.topicTree.isEmpty)
-        let scheme = AppViewModel.scheme(from: vm1.topicTree)
-        XCTAssertNotNil(ClassificationEngine.findNode(in: scheme, title: "叶子W"))
+        XCTAssertTrue(vm1.addTopicTerm("原理与生物物理学"))
+        XCTAssertTrue(vm1.addTopicTerm("影响因素"))
+        XCTAssertFalse(vm1.addTopicTerm("原理与生物物理学"))   // 去重
+        XCTAssertFalse(vm1.addTopicTerm("   "))                 // 空输入拒绝
+        XCTAssertEqual(vm1.topicTerms, ["原理与生物物理学", "影响因素"])
 
-        // 单个词条也支持。
-        XCTAssertTrue(vm1.addManualTopicPath("独立词条"))
-        XCTAssertNotNil(ClassificationEngine.findNode(in: AppViewModel.scheme(from: vm1.topicTree), title: "独立词条"))
-
-        XCTAssertFalse(vm1.addManualTopicPath("   "))   // 空输入拒绝
+        vm1.removeTopicTerm("原理与生物物理学")
+        XCTAssertEqual(vm1.topicTerms, ["影响因素"])
 
         let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
-        XCTAssertNotNil(ClassificationEngine.findNode(in: AppViewModel.scheme(from: vm2.topicTree), title: "叶子W"))   // 重启后仍生效
+        XCTAssertEqual(vm2.topicTerms, ["影响因素"])   // 重启后仍生效
     }
 
     func testCancelImportClearsPending() {

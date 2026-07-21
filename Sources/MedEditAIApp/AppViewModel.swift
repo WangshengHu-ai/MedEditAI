@@ -37,7 +37,14 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Per-project working state
     @Published var selectedForExport: Set<String> = []
-    @Published var topicTreeNodes: [TopicNode] = []
+    /// 主题分类词条（扁平列表，不再是四级菜单树）。这是主题分类的唯一真源。
+    @Published var topicTerms: [String] = []
+    /// 兼容层：把扁平词条映射为单层 `TopicNode`，供既有的 `scheme(from:)` 转换与筛选面板复用；
+    /// 写入时（如导入四级字典/手动路径）自动拍平为叶子词条，从而对外表现为“词条列表”。
+    private var topicTreeNodes: [TopicNode] {
+        get { topicTerms.map { TopicNode(title: $0, level: 1, count: nil, children: []) } }
+        set { topicTerms = Self.flatTerms(from: newValue) }
+    }
     @Published var impactFactorByJournal: [String: String] = [:]
     @Published var apiKey: String = ""
     @Published var ncbiApiKey: String = ""
@@ -105,7 +112,7 @@ final class AppViewModel: ObservableObject {
         self.impactFactorByJournal = snapshot.impactFactorByJournal
         self.promptTemplates = snapshot.promptTemplates ?? .default
         self.customStudyTerms = snapshot.customStudyTerms
-        self.topicTreeNodes = snapshot.topicScheme.map(Self.nodes(from:)) ?? []
+        self.topicTerms = snapshot.topicScheme.map(Self.terms(from:)) ?? []
         self.apiKey = snapshot.apiKey ?? ""
         self.ncbiApiKey = snapshot.ncbiApiKey ?? ""
         self.llmEndpoint = snapshot.llmEndpoint?.isEmpty == false ? snapshot.llmEndpoint! : Self.defaultLLMEndpoint
@@ -837,25 +844,30 @@ final class AppViewModel: ObservableObject {
         return ClassificationEngine.flattenPaths(in: scheme).count
     }
 
-    /// 手动新增一条主题分类路径，格式：“主题>次级>三级>四级”（也支持仅输入单个词条），无需导入 Excel。
+    /// 手动新增一条主题分类词条（扁平列表；去重/去空白）。返回是否成功添加。
     @discardableResult
-    func addManualTopicPath(_ path: String) -> Bool {
-        let parts = path.split(separator: ">").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        guard !parts.isEmpty else {
-            showToast("请输入有效的分类路径")
+    func addTopicTerm(_ term: String) -> Bool {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            showToast("请输入有效的主题词条")
             return false
         }
-        var node: ClassificationNode?
-        for (index, title) in parts.enumerated().reversed() {
-            node = ClassificationNode(title: title, level: index + 1, children: node.map { [$0] } ?? [])
+        guard !topicTerms.contains(trimmed) else {
+            showToast("该主题词条已存在")
+            return false
         }
-        guard let newRoot = node else { return false }
-        let scheme = Self.scheme(from: topicTreeNodes)
-        let updated = ClassificationScheme(name: scheme.name, type: scheme.type, isHierarchical: scheme.isHierarchical, items: scheme.items + [newRoot])
-        topicTreeNodes = Self.nodes(from: updated)
+        topicTerms.append(trimmed)
         persist()
-        showToast("已添加主题分类：\(path)")
+        showToast("已添加主题词条：\(trimmed)")
         return true
+    }
+
+    /// 移除一条主题分类词条。
+    func removeTopicTerm(_ term: String) {
+        guard let index = topicTerms.firstIndex(of: term) else { return }
+        topicTerms.remove(at: index)
+        if selectedTopic == term { selectedTopic = nil }
+        persist()
     }
 
     /// 新增一条自定义研究类型词条（去重/去空白）。
@@ -991,7 +1003,7 @@ final class AppViewModel: ObservableObject {
         promptTemplates = config.promptTemplates
         impactFactorByJournal = config.impactFactorByJournal
         customStudyTerms = config.customStudyTerms
-        topicTreeNodes = config.topicScheme.map(Self.nodes(from:)) ?? []
+        topicTerms = config.topicScheme.map(Self.terms(from:)) ?? []
         pptTemplateURL = config.pptTemplatePath.map(URL.init(fileURLWithPath:))
         pptVisualTemplate = config.pptVisualTemplate
         exportColumns = config.exportColumns
@@ -1225,5 +1237,41 @@ final class AppViewModel: ObservableObject {
 
     static func topicNode(from node: ClassificationNode) -> TopicNode {
         TopicNode(title: node.title, level: node.level, count: node.children.isEmpty ? 0 : nil, children: node.children.map(topicNode(from:)))
+    }
+
+    /// 从（可能是层级的）TopicNode 列表抽取扁平叶子词条：去空白、去重、保序。
+    static func flatTerms(from nodes: [TopicNode]) -> [String] {
+        var result: [String] = []
+        var seen: Set<String> = []
+        func walk(_ ns: [TopicNode]) {
+            for node in ns {
+                if node.children.isEmpty {
+                    let title = node.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty, seen.insert(title).inserted { result.append(title) }
+                } else {
+                    walk(node.children)
+                }
+            }
+        }
+        walk(nodes)
+        return result
+    }
+
+    /// 从 ClassificationScheme 抽取扁平词条列表（取所有叶子标题），兼容旧的四级树持久化数据自动拍平。
+    static func terms(from scheme: ClassificationScheme) -> [String] {
+        var result: [String] = []
+        var seen: Set<String> = []
+        func walk(_ nodes: [ClassificationNode]) {
+            for node in nodes {
+                if node.children.isEmpty {
+                    let title = node.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty, seen.insert(title).inserted { result.append(title) }
+                } else {
+                    walk(node.children)
+                }
+            }
+        }
+        walk(scheme.items)
+        return result
     }
 }
