@@ -88,7 +88,11 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         nameField.click()
         nameField.typeText("肿瘤免疫")
-        app.alerts.buttons["创建"].click()
+        // macOS 上带 TextField 的 SwiftUI .alert 在 XCUITest 无障碍树里不一定归类为 alert（可能是 dialog/sheet），
+        // 故不能用 app.alerts.buttons；改用全局 label 匹配 + firstMatch，既避免“Multiple matching”又不受 alert 限制。
+        let createButton = app.buttons.matching(NSPredicate(format: "label == %@", "创建")).firstMatch
+        XCTAssertTrue(createButton.waitForExistence(timeout: 10))
+        createButton.click()
 
         let predicate = NSPredicate(format: "label CONTAINS %@", "肿瘤免疫")
         let created = app.descendants(matching: .any).matching(predicate).firstMatch
@@ -118,12 +122,15 @@ final class MedEditAIUITests: XCTestCase {
         let lowConfidenceTitle = "Evaluation of variable inter-pulse delays for pulsed field ablation"
         XCTAssertTrue(app.buttons["btn-low-confidence-filter"].waitForExistence(timeout: 10))
         app.buttons["btn-low-confidence-filter"].click()
-        XCTAssertTrue(app.staticTexts[lowConfidenceTitle].waitForExistence(timeout: 10))
+        // 标题渲染在整行 Button 的 label 内，用按钮 label 匹配而非 staticText。
+        let lowRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", lowConfidenceTitle)).firstMatch
+        XCTAssertTrue(lowRow.waitForExistence(timeout: 10))
 
         let markReviewed = app.buttons["btn-mark-reviewed"]
         XCTAssertTrue(markReviewed.isEnabled)
         markReviewed.click()
-        XCTAssertTrue(app.staticTexts["该主题下暂无文献"].waitForExistence(timeout: 10))
+        // 唯一的低置信度文献被标记复核后，低置信度筛选结果为空 → 展示空状态“文献库为空”。
+        XCTAssertTrue(app.staticTexts["文献库为空"].waitForExistence(timeout: 10))
     }
 
     func testEnrichShowsFullQueueAndCustomTaskEditor() {
