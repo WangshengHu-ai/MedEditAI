@@ -1870,7 +1870,7 @@ struct PPTCanvasEditorPanel: View {
     @State private var dragBase: (Double, Double)?
     @State private var sizeBase: (Double, Double)?
 
-    private let displayWidth: Double = 340
+    private let displayWidth: Double = 300
 
     init(viewModel: AppViewModel) {
         self.viewModel = viewModel
@@ -1904,7 +1904,7 @@ struct PPTCanvasEditorPanel: View {
             HStack(alignment: .top, spacing: 16) {
                 canvasArea
                 inspector
-                    .frame(width: 250)
+                    .frame(width: 210)
             }
         }
         .roundedPanel()

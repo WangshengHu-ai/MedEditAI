@@ -143,16 +143,17 @@ final class MedEditAIUITests: XCTestCase {
         let app = launchApp()
         loadSampleData(in: app)
 
-        element("nav-slides", in: app).click()
-        // 产出生成页现用 PPT 画板（可拖拽文本框/图片，实时预览）+ Excel 导出模板。
-        XCTAssertTrue(app.buttons["btn-canvas-add-bound"].waitForExistence(timeout: 10), "应提供画板添加文本框")
-        XCTAssertTrue(app.buttons["btn-canvas-add-image"].waitForExistence(timeout: 10), "应提供画板添加图片")
-        XCTAssertTrue(app.staticTexts["Excel 导出模板"].waitForExistence(timeout: 10))
-
+        // 先在侧栏新鲜可见时进入设置，避免宽内容页导致 NavigationSplitView 侧栏收起后 nav 不可点。
         element("nav-settings", in: app).click()
         XCTAssertTrue(app.buttons["btn-save-default-config"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["当前项目配置在哪里修改"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["导出交付 Excel"].exists)
         XCTAssertFalse(app.buttons["导出 onepage PPT"].exists)
+
+        // 产出生成页现用 PPT 画板（可拖拽文本框/图片，实时预览）+ Excel 导出模板；放最后避免再切走。
+        element("nav-slides", in: app).click()
+        XCTAssertTrue(app.buttons["btn-canvas-add-bound"].waitForExistence(timeout: 10), "应提供画板添加文本框")
+        XCTAssertTrue(app.buttons["btn-canvas-add-image"].waitForExistence(timeout: 10), "应提供画板添加图片")
+        XCTAssertTrue(app.staticTexts["Excel 导出模板"].waitForExistence(timeout: 10))
     }
 }
