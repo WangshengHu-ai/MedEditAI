@@ -73,7 +73,7 @@ private struct DetailShellView: View {
         case .dashboard:
             InsightDetailView()
         case .search:
-            LibraryDetailView(viewModel: viewModel, article: viewModel.activeArticle)
+            SearchContextDetailView(viewModel: viewModel)
         case .enrich:
             EnrichDetailView(viewModel: viewModel)
         case .settings:

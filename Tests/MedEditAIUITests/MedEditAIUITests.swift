@@ -99,19 +99,14 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(created.waitForExistence(timeout: 10), "应创建并显示新项目")
     }
 
-    func testSearchShowsManualYearAndSelectingResultUpdatesDetail() {
+    func testSearchShowsControls() {
         let app = launchApp()
-        loadSampleData(in: app)
         element("nav-search", in: app).click()
 
+        // 检索中心只展示检索控件与结果，不再镜像文献库（导入数据不会出现在这里）。
         XCTAssertTrue(app.textFields["field-year-from"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.popUpButtons["picker-page-size"].waitForExistence(timeout: 10))
-
-        let articleTitle = "Latest Advances and Ongoing Challenges in Pulsed Field Ablation"
-        let articleButton = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", articleTitle)).firstMatch
-        XCTAssertTrue(articleButton.waitForExistence(timeout: 10))
-        articleButton.click()
-        XCTAssertTrue(app.staticTexts["脉冲电场消融的最新进展与持续挑战"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["field-search"].waitForExistence(timeout: 10))
     }
 
     func testLibraryCanFilterLowConfidenceAndMarkReviewed() {
@@ -155,7 +150,7 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(app.textFields["field-ppt-font-family"].waitForExistence(timeout: 10), "应支持编辑 PPT 字体")
         XCTAssertTrue(element("stepper-ppt-font-title", in: app).waitForExistence(timeout: 10), "应支持编辑标题字号")
 
-        app.buttons["btn-settings"].click()
+        element("nav-settings", in: app).click()
         XCTAssertTrue(app.buttons["btn-save-default-config"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["当前项目配置在哪里修改"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["导出交付 Excel"].exists)

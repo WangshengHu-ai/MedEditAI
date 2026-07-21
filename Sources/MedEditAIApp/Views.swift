@@ -10,7 +10,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $viewModel.selectedSection) {
             Section("工作台") {
-                ForEach(AppSection.allCases.filter { $0 != .settings }) { section in
+                ForEach(AppSection.allCases) { section in
                     Label(section.title, systemImage: section.systemImage)
                         .tag(section)
                         .accessibilityIdentifier("nav-\(section.rawValue)")
@@ -86,14 +86,6 @@ struct SidebarView: View {
                 .accessibilityIdentifier("btn-add-project")
 
                 Spacer()
-
-                Button {
-                    viewModel.navigate(to: .settings)
-                } label: {
-                    Label("设置", systemImage: "gearshape.fill")
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("btn-settings")
             }
             .padding(12)
             .background(.bar)
@@ -315,11 +307,11 @@ struct SearchView: View {
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppTheme.panelSecondary))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4])).foregroundStyle(AppTheme.line))
 
-                if viewModel.articles.isEmpty {
+                if !viewModel.hasSearchResults {
                     EmptyStateView(
                         icon: "magnifyingglass",
                         title: "暂无检索结果",
-                        message: "点击“批量检索入库”从 PubMed 拉取文献，或在文献库导入本地 Excel/CSV。勾选结果可仅导出所选。"
+                        message: "输入检索词后点击“检索”从 PubMed 拉取文献。勾选结果后用“批量检索入库”将其加入当前项目文献库；检索结果不会自动进入文献库。"
                     )
                 } else {
                     if viewModel.totalHits > 0 {
@@ -347,15 +339,16 @@ struct SearchView: View {
 
                     VStack(spacing: 0) {
                         SearchHeaderRow()
-                        ForEach(viewModel.articles) { article in
+                        ForEach(viewModel.searchResults) { article in
                             Button {
-                                viewModel.chooseArticle(article)
+                                viewModel.chooseSearchResult(article)
+                                viewModel.toggleSearchImport(article)
                             } label: {
-                                SearchArticleRow(article: article, isChecked: viewModel.selectedArticle?.id == article.id)
+                                SearchArticleRow(article: article, isChecked: viewModel.isSelectedForImport(article))
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("search-article-\(article.id)")
-                            if article.id != viewModel.articles.last?.id {
+                            if article.id != viewModel.searchResults.last?.id {
                                 Divider()
                             }
                         }
@@ -926,20 +919,71 @@ struct SearchContextDetailView: View {
     @ObservedObject var viewModel: AppViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("检索上下文")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(AppTheme.textSecondary)
-                .textCase(.uppercase)
-            InfoPanel(
-                title: "当前检索",
-                text: viewModel.searchTerms.isEmpty
-                    ? "输入检索词（多个用 AND 连接）后，将透明展示等价 PubMed 检索式，并支持排序与分页。"
-                    : "检索式：\(viewModel.displayedQuery)",
-                tags: viewModel.totalHits > 0 ? ["共 \(viewModel.totalHits) 条命中"] : []
-            )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("检索结果详情")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .textCase(.uppercase)
+
+                InfoPanel(
+                    title: "当前检索",
+                    text: viewModel.searchTerms.isEmpty
+                        ? "输入检索词（多个用 AND 连接）后，将透明展示等价 PubMed 检索式，并支持排序与分页。检索结果不会自动进入文献库。"
+                        : "检索式：\(viewModel.displayedQuery)",
+                    tags: viewModel.totalHits > 0 ? ["共 \(viewModel.totalHits) 条命中"] : []
+                )
+
+                if viewModel.hasSearchResults, let article = viewModel.selectedSearchArticle {
+                    Button {
+                        viewModel.importSingleSearchResult(article)
+                    } label: {
+                        Label("将本条加入文献库", systemImage: "tray.and.arrow.down.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.accent)
+                    .accessibilityIdentifier("btn-import-single-search")
+
+                    DetailBlock(title: "标题") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(article.titleEN)
+                                .font(.system(size: 14, weight: .semibold))
+                            if !article.titleCN.isEmpty {
+                                Text(article.titleCN)
+                                    .font(.system(size: 13.5))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                            }
+                        }
+                    }
+
+                    DetailBlock(title: "元数据") {
+                        DetailKeyValueGrid(pairs: [
+                            ("作者", article.authors),
+                            ("日期", article.date),
+                            ("研究类型", article.studyType),
+                            ("期刊", article.journal),
+                            ("影响因子", article.impactFactor),
+                            ("PMID", article.pmid)
+                        ])
+                    }
+
+                    if !article.abstractEN.isEmpty {
+                        DetailBlock(title: "摘要原文") {
+                            Text(article.abstractEN)
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .lineSpacing(4)
+                        }
+                    }
+                } else {
+                    Text("在左侧检索并点击某条结果，可在此查看详情并单独入库。")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(AppTheme.textTertiary)
+                }
+            }
+            .padding(20)
         }
-        .padding(20)
     }
 }
 

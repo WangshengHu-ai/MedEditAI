@@ -327,7 +327,7 @@ final class ViewModelTests: XCTestCase {
 
     // MARK: - 检索闭环（注入 Mock，无网络）
 
-    func testRunSearchWithMockPopulatesLibrary() async {
+    func testRunSearchPopulatesSearchResultsNotLibrary() async {
         let records = [
             PubMedRecord(
                 pmid: "1", title: "Electroporation review of ablation", abstract: "electroporation ablation",
@@ -338,16 +338,18 @@ final class ViewModelTests: XCTestCase {
         let vm = makeViewModel(pubmed: MockPubMed(ids: ["1"], records: records))
         vm.searchText = "ablation"
         await vm.runSearch()
-        XCTAssertTrue(vm.hasData)
-        XCTAssertEqual(vm.articleCount, 1)
-        XCTAssertEqual(vm.articles.first?.pmid, "1")
+        XCTAssertTrue(vm.hasSearchResults)
+        XCTAssertEqual(vm.searchResults.count, 1)
+        XCTAssertEqual(vm.searchResults.first?.pmid, "1")
+        XCTAssertFalse(vm.hasData)                 // 检索结果不进入文献库
+        XCTAssertEqual(vm.articleCount, 0)
     }
 
     func testRunSearchWithEmptyResultsKeepsEmptyAndToasts() async {
         let vm = makeViewModel(pubmed: MockPubMed(ids: [], records: []))
         vm.searchText = "ablation"
         await vm.runSearch()
-        XCTAssertFalse(vm.hasData)
+        XCTAssertFalse(vm.hasSearchResults)
         XCTAssertEqual(vm.toastMessage, "未找到结果")
     }
 
@@ -361,7 +363,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(vm.totalHits, 60)
         XCTAssertEqual(vm.currentPage, 0)
         XCTAssertEqual(vm.totalPages, 3)          // ceil(60 / 25)
-        XCTAssertEqual(vm.articleCount, 25)
+        XCTAssertEqual(vm.searchResults.count, 25)
         XCTAssertTrue(vm.canGoNextPage)
         XCTAssertFalse(vm.canGoPrevPage)
     }
@@ -375,11 +377,11 @@ final class ViewModelTests: XCTestCase {
         await vm.nextPage()
         XCTAssertEqual(vm.currentPage, 1)
         XCTAssertEqual(mock.lastRetstart, 25)
-        XCTAssertEqual(vm.articleCount, 25)
+        XCTAssertEqual(vm.searchResults.count, 25)
         XCTAssertTrue(vm.canGoPrevPage)
         await vm.nextPage()
         XCTAssertEqual(vm.currentPage, 2)
-        XCTAssertEqual(vm.articleCount, 10)       // 60 - 50
+        XCTAssertEqual(vm.searchResults.count, 10)       // 60 - 50
         XCTAssertFalse(vm.canGoNextPage)
         await vm.prevPage()
         XCTAssertEqual(vm.currentPage, 1)
@@ -414,7 +416,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(vm.pageSize, 50)
         XCTAssertEqual(mock.lastRetmax, 50)
         XCTAssertEqual(vm.currentPage, 0)          // 每页条数变更回到首页
-        XCTAssertEqual(vm.articleCount, 50)
+        XCTAssertEqual(vm.searchResults.count, 50)
         XCTAssertEqual(vm.totalPages, 2)           // ceil(60 / 50)
     }
 
@@ -440,7 +442,7 @@ final class ViewModelTests: XCTestCase {
         await vm.changePageSize(1000)
         XCTAssertEqual(vm.pageSize, 1000)
         XCTAssertEqual(mock.lastRetmax, 1000)
-        XCTAssertEqual(vm.articleCount, 120)
+        XCTAssertEqual(vm.searchResults.count, 120)
     }
 
     func testChangePageSizeWithoutActiveSearchJustResetsPaging() async {

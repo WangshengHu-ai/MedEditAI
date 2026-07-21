@@ -24,6 +24,13 @@ final class AppViewModel: ObservableObject {
     @Published var pageSize: Int = 25
     let pageSizeOptions: [Int] = [10, 25, 50, 100, 200, 500, 1000]
 
+    // MARK: - Search results (独立于文献库：检索中心只展示检索结果，绝不写入项目文献库 drafts)
+    @Published private var searchDrafts: [ArticleDraft] = []
+    /// 检索结果中当前查看详情的那一条。
+    @Published var selectedSearchResultID: String?
+    /// 检索结果中勾选待入库的集合。
+    @Published var selectedSearchImport: Set<String> = []
+
     // MARK: - Projects (source of truth)
     @Published private var storedProjects: [StoredProject]
     @Published var selectedProjectID: UUID
@@ -344,6 +351,29 @@ final class AppViewModel: ObservableObject {
         else { selectedForExport.insert(article.id) }
     }
 
+    // MARK: - Search results (只读展示 + 勾选入库；与文献库 drafts 完全隔离)
+    var searchResults: [Article] {
+        searchDrafts.enumerated().map { index, draft in
+            let id = (draft.pmid?.isEmpty == false) ? "search-\(draft.pmid!)" : "search-row-\(index)"
+            return Self.display(draft, id: id)
+        }
+    }
+
+    var hasSearchResults: Bool { !searchDrafts.isEmpty }
+
+    var selectedSearchArticle: Article? {
+        searchResults.first { $0.id == selectedSearchResultID } ?? searchResults.first
+    }
+
+    func chooseSearchResult(_ article: Article) { selectedSearchResultID = article.id }
+
+    func isSelectedForImport(_ article: Article) -> Bool { selectedSearchImport.contains(article.id) }
+
+    func toggleSearchImport(_ article: Article) {
+        if selectedSearchImport.contains(article.id) { selectedSearchImport.remove(article.id) }
+        else { selectedSearchImport.insert(article.id) }
+    }
+
     var activeArticle: Article {
         selectedArticle ?? articles.first ?? Self.placeholderArticle
     }
@@ -445,22 +475,30 @@ final class AppViewModel: ObservableObject {
             totalHits = result.total
             currentPage = page
             guard !result.ids.isEmpty else {
-                replaceDrafts([])
+                setSearchResults([])
                 showToast("未找到结果")
                 return
             }
             let records = try await pubmed.fetch(pmids: result.ids)
             let recognized = records.map(autoRecognize(record:))
-            replaceDrafts(recognized)
+            setSearchResults(recognized)
             showToast("检索完成：第 \(page + 1)/\(max(totalPages, 1)) 页，共 \(totalHits) 条")
         } catch {
             showToast("检索失败：\(error.localizedDescription)")
         }
     }
 
+    /// 用新的检索结果覆盖检索中心（只影响检索结果，不动文献库 drafts）。
+    private func setSearchResults(_ newDrafts: [ArticleDraft]) {
+        searchDrafts = newDrafts
+        selectedSearchImport = []
+        selectedSearchResultID = searchResults.first?.id
+    }
+
     func batchImport(all: Bool) async {
-        guard !isBusy, !searchTerms.isEmpty else { return }
+        guard !isBusy else { return }
         if all {
+            guard !searchTerms.isEmpty else { return }
             isBusy = true
             progress = 0
             showToast("正在获取所有检索结果（限前100条）…")
@@ -471,30 +509,58 @@ final class AppViewModel: ObservableObject {
                 totalHits = result.total
                 currentPage = 0
                 guard !result.ids.isEmpty else {
-                    replaceDrafts([])
+                    setSearchResults([])
                     showToast("未找到结果")
                     return
                 }
                 let records = try await pubmed.fetch(pmids: result.ids)
                 let recognized = records.map(autoRecognize(record:))
-                replaceDrafts(recognized)
-                showToast("批量入库完成：共 \(records.count) 条")
-                selectedSection = .dashboard
+                setSearchResults(recognized)
+                let added = appendToLibrary(recognized)
+                showToast("已入库 \(added) 篇（共检索 \(records.count) 条，已按 PMID 去重）")
+                selectedSection = .library
             } catch {
                 showToast("批量下载失败：\(error.localizedDescription)")
             }
         } else {
-            guard !selectedForExport.isEmpty else {
-                showToast("请先勾选需要入库的文献")
+            guard !selectedSearchImport.isEmpty else {
+                showToast("请先勾选需要入库的检索结果")
                 return
             }
-            let keep = drafts.enumerated().filter { i, d in
-                selectedForExport.contains(draftID(d, index: i))
-            }.map { $0.element }
-            replaceDrafts(keep)
-            showToast("已保留提取勾选的 \(keep.count) 条文献")
-            selectedSection = .dashboard
+            let picked = searchResults.filter { selectedSearchImport.contains($0.id) }.map(\.id)
+            let keep = zip(searchDrafts.indices, searchDrafts).filter { index, draft in
+                let id = (draft.pmid?.isEmpty == false) ? "search-\(draft.pmid!)" : "search-row-\(index)"
+                return picked.contains(id)
+            }.map { $0.1 }
+            let added = appendToLibrary(keep)
+            showToast("已入库勾选的 \(added) 篇文献（已按 PMID 去重）")
+            selectedSection = .library
         }
+    }
+
+    /// 把检索结果追加到当前项目文献库；按 PMID 去重，返回真正新增的条数。
+    @discardableResult
+    private func appendToLibrary(_ newDrafts: [ArticleDraft]) -> Int {
+        var working = drafts
+        let existingPMIDs = Set(working.compactMap { ($0.pmid?.isEmpty == false) ? $0.pmid : nil })
+        var added = 0
+        for draft in newDrafts {
+            if let pmid = draft.pmid, !pmid.isEmpty, existingPMIDs.contains(pmid) { continue }
+            working.append(draft)
+            added += 1
+        }
+        drafts = working
+        selectedArticleID = articles.first?.id
+        persist()
+        return added
+    }
+
+    /// 从检索结果详情页把单条文献加入文献库。
+    func importSingleSearchResult(_ article: Article) {
+        guard let index = searchResults.firstIndex(where: { $0.id == article.id }) else { return }
+        let added = appendToLibrary([searchDrafts[index]])
+        let title = article.titleEN.isEmpty ? article.titleCN : article.titleEN
+        showToast(added > 0 ? "已入库：\(title)" : "该文献已在库中")
     }
 
     /// 离线确定性“自动识别”：入库即填充研究设计/主题/产品/IF（不联网、不翻译）。
