@@ -576,6 +576,13 @@ final class ViewModelTests: XCTestCase {
     func testEnrichmentProcessesOnlySelectedArticles() async {
         let vm = makeViewModel()
         vm.apiKey = "sk-mock"
+        // 该测试用的 mock 对所有请求只返回翻译 JSON，因此仅启用翻译任务，
+        // 避免研究类型/主题分类调用因解析非预期响应而抛错、导致整篇 enrich 失败。
+        vm.tasks = vm.tasks.map { task in
+            var updated = task
+            updated.isEnabled = task.key == "translate"
+            return updated
+        }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [PromptCapturingProtocol.self]
         vm.sessionForTesting = URLSession(configuration: config)
@@ -601,6 +608,12 @@ final class ViewModelTests: XCTestCase {
     func testEnrichmentProcessesAllWhenNoneSelected() async {
         let vm = makeViewModel()
         vm.apiKey = "sk-mock"
+        // 同上：mock 仅支持翻译响应，故只启用翻译任务。
+        vm.tasks = vm.tasks.map { task in
+            var updated = task
+            updated.isEnabled = task.key == "translate"
+            return updated
+        }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [PromptCapturingProtocol.self]
         vm.sessionForTesting = URLSession(configuration: config)
