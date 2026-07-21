@@ -675,6 +675,34 @@ struct SettingsSecureRow: View {
     }
 }
 
+/// 明文设置输入行（用于非敏感配置，如 LLM 接口地址、模型名）。
+struct SettingsFieldRow: View {
+    let title: String
+    let subtitle: String
+    let placeholder: String
+    @Binding var text: String
+    var accessibilityID: String? = nil
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 240)
+                .accessibilityIdentifier(accessibilityID ?? "")
+        }
+        .padding(16)
+    }
+}
+
 struct MappingPanel: View {
     let title: String
     let items: [MappingPair]

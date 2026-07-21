@@ -34,6 +34,10 @@ final class AppViewModel: ObservableObject {
     @Published var impactFactorByJournal: [String: String] = [:]
     @Published var apiKey: String = ""
     @Published var ncbiApiKey: String = ""
+    /// 云端 LLM 接口地址（OpenAI 兼容）。默认指向智谱 BigModel；可在设置中改为任意 OpenAI 兼容服务。
+    @Published var llmEndpoint: String = AppViewModel.defaultLLMEndpoint
+    /// 云端 LLM 模型名。默认 glm-4-flash；可在设置中改为 gpt-4o-mini 等。
+    @Published var llmModel: String = AppViewModel.defaultLLMModel
     @Published var pptTemplateURL: URL?
     @Published var pptVisualTemplate: PPTVisualTemplate = .init()
     @Published var promptTemplates: PromptTemplates = .default
@@ -70,6 +74,11 @@ final class AppViewModel: ObservableObject {
     let pptMappings = SampleData.pptMappings
     let sortOptions = PubMedSort.allCases
 
+    /// 云端 LLM 默认配置：默认指向智谱 BigModel 的 OpenAI 兼容接口与免费的 glm-4-flash 模型，
+    /// 用户只需在设置里填入 API Key 即可开箱即用；也可改为任意其他 OpenAI 兼容服务与模型。
+    static let defaultLLMEndpoint = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    static let defaultLLMModel = "glm-4-flash"
+
     // MARK: - Services
     private let store: LibraryStore
     private let pubmedProvider: PubMedFetching?
@@ -92,6 +101,8 @@ final class AppViewModel: ObservableObject {
         self.topicTreeNodes = snapshot.topicScheme.map(Self.nodes(from:)) ?? []
         self.apiKey = snapshot.apiKey ?? ""
         self.ncbiApiKey = snapshot.ncbiApiKey ?? ""
+        self.llmEndpoint = snapshot.llmEndpoint?.isEmpty == false ? snapshot.llmEndpoint! : Self.defaultLLMEndpoint
+        self.llmModel = snapshot.llmModel?.isEmpty == false ? snapshot.llmModel! : Self.defaultLLMModel
         if snapshot.projects.isEmpty {
             let defaultProject = StoredProject(name: "我的文献库", colorHex: "#0E9F9F", articles: [], config: resolvedDefaultConfig)
             self.storedProjects = [defaultProject]
@@ -568,10 +579,16 @@ final class AppViewModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(250))
             }
 
-            enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .running)
+            enrichmentQueue[index] = QueueItem(title: enrichmentQueue[index].title, status: .running, detail: "开始处理…")
             do {
                 let record = Self.record(from: working[index])
-                let enriched = try await service.enrich(record: record)
+                let enriched = try await service.enrich(record: record, onStep: { [weak self] step in
+                    await MainActor.run {
+                        guard let self, self.enrichmentQueue.indices.contains(index) else { return }
+                        let title = self.enrichmentQueue[index].title
+                        self.enrichmentQueue[index] = QueueItem(title: title, status: .running, detail: step)
+                    }
+                })
                 working[index] = Self.merged(original: working[index], enriched: enriched)
                 drafts = working
                 processed += 1
@@ -857,8 +874,13 @@ final class AppViewModel: ObservableObject {
         if let injected = llmProvider {
             provider = injected
         } else {
+            let resolvedEndpoint = URL(string: llmEndpoint.trimmingCharacters(in: .whitespacesAndNewlines))
+                ?? URL(string: Self.defaultLLMEndpoint)!
+            let resolvedModel = llmModel.trimmingCharacters(in: .whitespacesAndNewlines)
             provider = OpenAICompatibleLLM(
-                apiKey: apiKey, 
+                apiKey: apiKey,
+                model: resolvedModel.isEmpty ? Self.defaultLLMModel : resolvedModel,
+                endpoint: resolvedEndpoint,
                 session: {
 #if DEBUG
                     if let s = sessionForTesting { return s }
@@ -928,17 +950,21 @@ final class AppViewModel: ObservableObject {
 
     private func persist() {
         saveActiveProjectConfig()
-        try? store.save(
-            LibrarySnapshot(
-                projects: storedProjects,
-                customStudyTerms: customStudyTerms,
-                impactFactorByJournal: impactFactorByJournal,
-                promptTemplates: promptTemplates,
-                topicScheme: Self.scheme(from: topicTreeNodes),
-                apiKey: apiKey,
-                ncbiApiKey: ncbiApiKey,
-                defaultProjectConfig: defaultProjectConfig
-            )
+        try? store.save(makeSnapshot())
+    }
+
+    private func makeSnapshot() -> LibrarySnapshot {
+        LibrarySnapshot(
+            projects: storedProjects,
+            customStudyTerms: customStudyTerms,
+            impactFactorByJournal: impactFactorByJournal,
+            promptTemplates: promptTemplates,
+            topicScheme: Self.scheme(from: topicTreeNodes),
+            apiKey: apiKey,
+            ncbiApiKey: ncbiApiKey,
+            llmEndpoint: llmEndpoint,
+            llmModel: llmModel,
+            defaultProjectConfig: defaultProjectConfig
         )
     }
 
@@ -946,6 +972,12 @@ final class AppViewModel: ObservableObject {
         defaultProjectConfig = config
         persist()
         showToast("已保存默认项目配置")
+    }
+
+    /// 保存系统级密钥与 LLM 接口配置（API Key / 接口地址 / 模型），使其在重启后仍生效。
+    /// 直接写入快照，不触发项目配置回写，避免在设置页逐字输入时反复重建项目配置、抖动界面。
+    func persistSystemKeys() {
+        try? store.save(makeSnapshot())
     }
 
     func makeCurrentProjectConfig() -> ProjectConfig {

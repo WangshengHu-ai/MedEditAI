@@ -32,10 +32,11 @@ final class EnrichmentService {
         self.customTasks = customTasks
     }
 
-    func enrich(record: PubMedRecord) async throws -> ArticleDraft {
+    func enrich(record: PubMedRecord, onStep: (@Sendable (String) async -> Void)? = nil) async throws -> ArticleDraft {
         let rawText = [record.title, record.abstract, record.keywords.joined(separator: " "), record.meshTerms.joined(separator: " ")].joined(separator: " ")
         let study: StudyDesignResult
         if enabledTasks.contains("study") {
+            await onStep?("识别研究设计…")
             study = try await resolveStudyType(rawText: rawText, title: record.title, abstract: record.abstract)
         } else {
             study = StudyDesignResult(design: "", evidenceLevel: "", confidence: 1.0)
@@ -44,6 +45,7 @@ final class EnrichmentService {
         var titleCN = ""
         var abstractCN = ""
         if enabledTasks.contains("translate") {
+            await onStep?("翻译标题与摘要…")
             let request = TranslationRequest(title: record.title, abstract: record.abstract, keywords: record.keywords)
             let translation = try await llm.translate(request)
             titleCN = translation.titleCN
@@ -53,6 +55,7 @@ final class EnrichmentService {
         var topicLeaf = "未分类"
         var topicConfidence: Double?
         if enabledTasks.contains("topic") {
+            await onStep?("主题分类…")
             let candidatePaths = ClassificationEngine.flattenPaths(in: topicScheme)
             let classification = try await llm.classifyTopic(title: record.title, abstract: record.abstract, candidatePaths: candidatePaths)
             topicLeaf = leaf(of: classification.topicPath)
@@ -60,6 +63,9 @@ final class EnrichmentService {
         }
 
         let confidence = min(study.confidence, topicConfidence ?? study.confidence)
+        if enabledTasks.contains("metrics") || enabledTasks.contains("products") {
+            await onStep?("匹配 IF 与产品…")
+        }
         let impactFactor = enabledTasks.contains("metrics") ? impactFactorByJournal[normalize(record.journal)] : nil
         let product = enabledTasks.contains("products") ? ArticleProcessor.inferProduct(from: rawText) : ""
 
@@ -88,6 +94,7 @@ final class EnrichmentService {
         if !customTasks.isEmpty {
             var fields = draft.customFields ?? [:]
             for task in customTasks where task.isEnabled {
+                await onStep?("自定义任务：\(task.title)…")
                 let result = try await llm.runCustomTask(
                     promptTemplate: task.prompt, title: record.title, abstract: record.abstract, keywords: record.keywords
                 )

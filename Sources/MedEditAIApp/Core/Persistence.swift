@@ -26,6 +26,10 @@ struct LibrarySnapshot: Codable {
     var topicScheme: ClassificationScheme?
     var apiKey: String?
     var ncbiApiKey: String?
+    /// 云端 LLM 的接口地址（OpenAI 兼容 /chat/completions）。可选，缺省时由上层回退到内置默认值。
+    var llmEndpoint: String?
+    /// 云端 LLM 使用的模型名（如 glm-4-flash / gpt-4o-mini）。可选，缺省时由上层回退到内置默认值。
+    var llmModel: String?
     /// 新建项目时使用的默认项目配置模板；在设置页的“默认项目配置”区域编辑。
     var defaultProjectConfig: ProjectConfig?
 
@@ -39,6 +43,8 @@ struct LibrarySnapshot: Codable {
         topicScheme: ClassificationScheme? = nil,
         apiKey: String? = nil,
         ncbiApiKey: String? = nil,
+        llmEndpoint: String? = nil,
+        llmModel: String? = nil,
         defaultProjectConfig: ProjectConfig? = nil
     ) {
         self.projects = projects
@@ -48,6 +54,8 @@ struct LibrarySnapshot: Codable {
         self.topicScheme = topicScheme
         self.apiKey = apiKey
         self.ncbiApiKey = ncbiApiKey
+        self.llmEndpoint = llmEndpoint
+        self.llmModel = llmModel
         self.defaultProjectConfig = defaultProjectConfig
     }
 }

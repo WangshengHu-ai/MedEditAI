@@ -724,6 +724,46 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(vm.articles.allSatisfy { !$0.titleCN.isEmpty })
     }
 
+    // MARK: - LLM 接口/模型可配置 + 单篇进度回调
+
+    func testDefaultLLMEndpointAndModelAreBigModel() {
+        let vm = makeViewModel()
+        XCTAssertEqual(vm.llmEndpoint, "https://open.bigmodel.cn/api/paas/v4/chat/completions")
+        XCTAssertEqual(vm.llmModel, "glm-4-flash")
+    }
+
+    func testLLMEndpointAndModelPersistAcrossReload() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("llm-config-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        vm1.llmEndpoint = "https://example.com/v1/chat/completions"
+        vm1.llmModel = "glm-4"
+        vm1.apiKey = "id.secret"
+        vm1.persistSystemKeys()
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertEqual(vm2.llmEndpoint, "https://example.com/v1/chat/completions")
+        XCTAssertEqual(vm2.llmModel, "glm-4")
+        XCTAssertEqual(vm2.apiKey, "id.secret")
+    }
+
+    func testEnrichmentServiceReportsPerArticleProgressSteps() async throws {
+        let service = EnrichmentService(
+            llm: MockLLM(),
+            topicScheme: ClassificationScheme(name: "主题", type: .topic, isHierarchical: true, items: []),
+            customStudyTerms: [],
+            impactFactorByJournal: [:],
+            enabledTasks: ["translate", "topic"]
+        )
+        let collector = StepCollector()
+        _ = try await service.enrich(record: record(pmid: "1", title: "PFA study")) { step in
+            await collector.add(step)
+        }
+        let steps = await collector.steps
+        XCTAssertTrue(steps.contains { $0.contains("翻译") }, "应上报翻译进度")
+        XCTAssertTrue(steps.contains { $0.contains("主题") }, "应上报主题分类进度")
+    }
+
     // MARK: - FP22 导入自动识别文献字段
 
     func testAutoRecognizeFillsEmptyFields() {
@@ -1025,6 +1065,12 @@ final class ViewModelTests: XCTestCase {
         vm.resetPromptTemplates()
         XCTAssertEqual(vm.promptTemplates, PromptTemplates.default)
     }
+}
+
+/// 线程安全收集 enrich 单篇处理进度步骤，供进度回调测试断言。
+actor StepCollector {
+    private(set) var steps: [String] = []
+    func add(_ step: String) { steps.append(step) }
 }
 
 /// 拦截 URLSession 请求体，供 Prompt 替换测试断言实际发出的内容。

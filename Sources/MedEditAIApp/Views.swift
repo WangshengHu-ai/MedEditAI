@@ -399,6 +399,7 @@ struct LibraryListView: View {
                     .accessibilityIdentifier("btn-mark-reviewed")
                     Button("批量 AI 加工") {
                         viewModel.navigate(to: .enrich)
+                        Task { await viewModel.runEnrichment() }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(AppTheme.accent)
@@ -820,8 +821,24 @@ struct SettingsView: View {
                         SettingsSecureRow(
                             title: "LLM API Key",
                             subtitle: "必填；用于调用云端 LLM 执行翻译、研究设计和主题分类",
-                            placeholder: "sk-...",
+                            placeholder: "sk-... 或 智谱 id.secret",
                             text: $viewModel.apiKey
+                        )
+                        Divider()
+                        SettingsFieldRow(
+                            title: "LLM 接口地址",
+                            subtitle: "OpenAI 兼容 /chat/completions；默认智谱 BigModel，可改为其他服务",
+                            placeholder: AppViewModel.defaultLLMEndpoint,
+                            text: $viewModel.llmEndpoint,
+                            accessibilityID: "field-llm-endpoint"
+                        )
+                        Divider()
+                        SettingsFieldRow(
+                            title: "LLM 模型",
+                            subtitle: "如 glm-4-flash（默认，免费）/ glm-4 / gpt-4o-mini",
+                            placeholder: AppViewModel.defaultLLMModel,
+                            text: $viewModel.llmModel,
+                            accessibilityID: "field-llm-model"
                         )
                         Divider()
                         SettingsSecureRow(
@@ -898,6 +915,10 @@ struct SettingsView: View {
             }
             .padding(24)
         }
+        .onChange(of: viewModel.apiKey) { _, _ in viewModel.persistSystemKeys() }
+        .onChange(of: viewModel.ncbiApiKey) { _, _ in viewModel.persistSystemKeys() }
+        .onChange(of: viewModel.llmEndpoint) { _, _ in viewModel.persistSystemKeys() }
+        .onChange(of: viewModel.llmModel) { _, _ in viewModel.persistSystemKeys() }
     }
 }
 
