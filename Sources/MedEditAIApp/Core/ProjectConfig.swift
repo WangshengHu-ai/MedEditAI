@@ -140,6 +140,8 @@ struct ProjectConfig: Codable, Hashable {
     var exportColumns: [ExportColumnConfig]
     var pptPlaceholders: [PPTPlaceholderMapping]
     var customTasks: [CustomProcessingTask]
+    /// 产品内 PPT 画板模板（可拖拽的文本框/图片，实时预览）。Optional 以兼容旧持久化数据。
+    var pptCanvas: PPTCanvasTemplate?
 
     init(
         promptTemplates: PromptTemplates = .default,
@@ -150,7 +152,8 @@ struct ProjectConfig: Codable, Hashable {
         pptVisualTemplate: PPTVisualTemplate = .init(),
         exportColumns: [ExportColumnConfig] = ProjectConfig.defaultExportColumns,
         pptPlaceholders: [PPTPlaceholderMapping] = ProjectConfig.defaultPPTPlaceholders,
-        customTasks: [CustomProcessingTask] = []
+        customTasks: [CustomProcessingTask] = [],
+        pptCanvas: PPTCanvasTemplate? = nil
     ) {
         self.promptTemplates = promptTemplates
         self.impactFactorByJournal = impactFactorByJournal
@@ -161,6 +164,7 @@ struct ProjectConfig: Codable, Hashable {
         self.exportColumns = exportColumns
         self.pptPlaceholders = pptPlaceholders
         self.customTasks = customTasks
+        self.pptCanvas = pptCanvas
     }
 
     static let `default` = ProjectConfig()
@@ -193,5 +197,119 @@ struct ProjectConfig: Codable, Hashable {
         .init(placeholder: "{{abstract_cn}}", field: "abstractCN"),
         .init(placeholder: "{{citation}}", field: "citation"),
         .init(placeholder: "{{url}}", field: "url")
+    ]
+}
+
+// MARK: - PPT 画板模板（可视化拖拽编辑，实时预览）
+
+/// 画板元素类型：绑定字段的文本框（随文献数据自动填充）、固定文本框、图片。
+enum CanvasElementKind: String, Codable, Hashable {
+    case boundText
+    case staticText
+    case image
+}
+
+enum CanvasTextAlignment: String, Codable, Hashable {
+    case leading, center, trailing
+}
+
+/// 画板上的单个元素。位置/大小单位为“点(pt)”，相对画布左上角。
+struct CanvasElement: Codable, Hashable, Identifiable {
+    var id: UUID
+    var kind: CanvasElementKind
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+    /// boundText 绑定的字段 id（见 `ExportFieldCatalog`）。
+    var fieldID: String
+    /// staticText 的文字内容；boundText 时作为字段值前缀（可空）。
+    var text: String
+    var fontSize: Double
+    var fontFamily: String
+    var colorHex: String
+    var bold: Bool
+    var alignment: CanvasTextAlignment
+    /// image 元素的 PNG 图片（base64 编码）。
+    var imageBase64: String
+
+    init(
+        id: UUID = UUID(),
+        kind: CanvasElementKind,
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        fieldID: String = "titleEN",
+        text: String = "",
+        fontSize: Double = 14,
+        fontFamily: String = "Arial",
+        colorHex: String = "#1A1A1A",
+        bold: Bool = false,
+        alignment: CanvasTextAlignment = .leading,
+        imageBase64: String = ""
+    ) {
+        self.id = id
+        self.kind = kind
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.fieldID = fieldID
+        self.text = text
+        self.fontSize = fontSize
+        self.fontFamily = fontFamily
+        self.colorHex = colorHex
+        self.bold = bold
+        self.alignment = alignment
+        self.imageBase64 = imageBase64
+    }
+}
+
+/// PPT 画板模板：固定 A4 页面 + 一组自由摆放的元素。
+struct PPTCanvasTemplate: Codable, Hashable {
+    /// A4 纵向，单位点(pt)，72dpi。
+    var pageWidth: Double
+    var pageHeight: Double
+    var backgroundHex: String
+    var elements: [CanvasElement]
+
+    init(
+        pageWidth: Double = 595,
+        pageHeight: Double = 842,
+        backgroundHex: String = "#FFFFFF",
+        elements: [CanvasElement] = PPTCanvasTemplate.defaultElements
+    ) {
+        self.pageWidth = pageWidth
+        self.pageHeight = pageHeight
+        self.backgroundHex = backgroundHex
+        self.elements = elements
+    }
+
+    static let `default` = PPTCanvasTemplate()
+
+    /// 默认起始版式：主题标签 + 双语标题 + 作者/期刊 + 中文摘要 + 参考文献 + 链接与版权声明。
+    static let defaultElements: [CanvasElement] = [
+        .init(kind: .boundText, x: 40, y: 34, width: 515, height: 30, fieldID: "topic",
+              fontSize: 18, colorHex: "#0E9F9F", bold: true),
+        .init(kind: .boundText, x: 40, y: 72, width: 515, height: 54, fieldID: "titleEN",
+              fontSize: 20, colorHex: "#111111", bold: true),
+        .init(kind: .boundText, x: 40, y: 128, width: 515, height: 40, fieldID: "titleCN",
+              fontSize: 16, colorHex: "#444444"),
+        .init(kind: .boundText, x: 40, y: 178, width: 320, height: 20, fieldID: "authors",
+              fontSize: 11, colorHex: "#666666"),
+        .init(kind: .boundText, x: 40, y: 200, width: 320, height: 20, fieldID: "journal",
+              fontSize: 11, colorHex: "#666666"),
+        .init(kind: .boundText, x: 380, y: 178, width: 175, height: 42, fieldID: "impactFactor",
+              text: "IF ", fontSize: 11, colorHex: "#0E7BA6", alignment: .trailing),
+        .init(kind: .boundText, x: 40, y: 240, width: 515, height: 372, fieldID: "abstractCN",
+              text: "摘要：", fontSize: 12, colorHex: "#222222"),
+        .init(kind: .boundText, x: 40, y: 630, width: 515, height: 64, fieldID: "citation",
+              text: "参考文献：", fontSize: 10, colorHex: "#555555"),
+        .init(kind: .staticText, x: 40, y: 706, width: 515, height: 24, text: "点击查看原文链接",
+              fontSize: 12, colorHex: "#0E9F9F", bold: true),
+        .init(kind: .staticText, x: 40, y: 760, width: 515, height: 44,
+              text: "*版权问题暂不提供直接下载，如有学术交流需要，请联系内部人员",
+              fontSize: 9, colorHex: "#999999")
     ]
 }

@@ -144,11 +144,10 @@ final class MedEditAIUITests: XCTestCase {
         loadSampleData(in: app)
 
         element("nav-slides", in: app).click()
-        XCTAssertTrue(app.staticTexts["PPT 样式模板"].waitForExistence(timeout: 10))
+        // 产出生成页现用 PPT 画板（可拖拽文本框/图片，实时预览）+ Excel 导出模板。
+        XCTAssertTrue(app.buttons["btn-canvas-add-bound"].waitForExistence(timeout: 10), "应提供画板添加文本框")
+        XCTAssertTrue(app.buttons["btn-canvas-add-image"].waitForExistence(timeout: 10), "应提供画板添加图片")
         XCTAssertTrue(app.staticTexts["Excel 导出模板"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["PPT 占位符映射"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.textFields["field-ppt-font-family"].waitForExistence(timeout: 10), "应支持编辑 PPT 字体")
-        XCTAssertTrue(element("stepper-ppt-font-title", in: app).waitForExistence(timeout: 10), "应支持编辑标题字号")
 
         element("nav-settings", in: app).click()
         XCTAssertTrue(app.buttons["btn-save-default-config"].waitForExistence(timeout: 10))

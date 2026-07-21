@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct PageHeader<Actions: View>: View {
     let title: String
@@ -1773,5 +1775,372 @@ struct PromptEditorSheet: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.line))
         }
+    }
+}
+
+// MARK: - PPT 画板（可视化编辑 + 实时预览）
+
+/// 渲染单个画板元素的内容（文本或图片）。editor 与只读预览共用。
+struct CanvasElementContentView: View {
+    let element: CanvasElement
+    let displayText: String
+    let scale: Double
+
+    private var frameAlignment: Alignment {
+        switch element.alignment {
+        case .leading: return .topLeading
+        case .center: return .top
+        case .trailing: return .topTrailing
+        }
+    }
+
+    private var textAlignment: TextAlignment {
+        switch element.alignment {
+        case .leading: return .leading
+        case .center: return .center
+        case .trailing: return .trailing
+        }
+    }
+
+    var body: some View {
+        switch element.kind {
+        case .image:
+            if let data = Data(base64Encoded: element.imageBase64), let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppTheme.panelSecondary)
+                    .overlay(Image(systemName: "photo").foregroundStyle(AppTheme.textTertiary))
+            }
+        case .boundText, .staticText:
+            Text(displayText.isEmpty ? " " : displayText)
+                .font(.custom(element.fontFamily, size: max(1, element.fontSize * scale)))
+                .fontWeight(element.bold ? .bold : .regular)
+                .foregroundStyle(Color(hex: element.colorHex))
+                .multilineTextAlignment(textAlignment)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: frameAlignment)
+        }
+    }
+}
+
+/// 只读 WYSIWYG 画板预览：把画板按当前文献数据填充绑定字段后按比例渲染。
+struct PPTCanvasPreview: View {
+    let canvas: PPTCanvasTemplate
+    let article: Article
+    var maxWidth: Double = 360
+    var sequence: Int = 1
+
+    private var scale: Double { maxWidth / max(canvas.pageWidth, 1) }
+
+    static func resolvedText(for element: CanvasElement, article: Article, sequence: Int) -> String {
+        switch element.kind {
+        case .staticText: return element.text
+        case .boundText: return element.text + AppViewModel.canvasFieldValue(element.fieldID, from: article, sequence: sequence)
+        case .image: return ""
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(Color(hex: canvas.backgroundHex))
+            ForEach(canvas.elements) { element in
+                CanvasElementContentView(
+                    element: element,
+                    displayText: Self.resolvedText(for: element, article: article, sequence: sequence),
+                    scale: scale
+                )
+                .frame(width: element.width * scale, height: element.height * scale)
+                .offset(x: element.x * scale, y: element.y * scale)
+            }
+        }
+        .frame(width: canvas.pageWidth * scale, height: canvas.pageHeight * scale)
+        .clipped()
+        .overlay(Rectangle().stroke(AppTheme.line))
+    }
+}
+
+/// PPT 画板交互式编辑器：添加/拖拽/缩放/绑定字段/编辑文字/图片，实时预览。
+struct PPTCanvasEditorPanel: View {
+    @ObservedObject var viewModel: AppViewModel
+    @State private var working: PPTCanvasTemplate
+    @State private var selectedID: UUID?
+    @State private var dragBase: (Double, Double)?
+    @State private var sizeBase: (Double, Double)?
+
+    private let displayWidth: Double = 340
+
+    init(viewModel: AppViewModel) {
+        self.viewModel = viewModel
+        _working = State(initialValue: viewModel.pptCanvas)
+    }
+
+    private var scale: Double { displayWidth / max(working.pageWidth, 1) }
+    private var previewArticle: Article { viewModel.canvasPreviewArticle }
+
+    private var selectedIndex: Int? {
+        guard let id = selectedID else { return nil }
+        return working.elements.firstIndex(where: { $0.id == id })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(title: "PPT 画板（可拖拽文本框/图片，实时预览）")
+            Text("在画板上添加文本框（可绑定标题/摘要/期刊等字段，随文献自动填充）或图片，拖拽移动、右下角缩放；右侧检查器可调整绑定字段、文字、字号、颜色、对齐。")
+                .font(.system(size: 12))
+                .foregroundStyle(AppTheme.textSecondary)
+            HStack(spacing: 8) {
+                Button { addBoundText() } label: { Label("文本框", systemImage: "textbox") }
+                    .accessibilityIdentifier("btn-canvas-add-bound")
+                Button { addStaticText() } label: { Label("固定文字", systemImage: "character.cursor.ibeam") }
+                    .accessibilityIdentifier("btn-canvas-add-static")
+                Button { addImage() } label: { Label("图片", systemImage: "photo") }
+                    .accessibilityIdentifier("btn-canvas-add-image")
+                Spacer()
+                Button { resetCanvas() } label: { Label("重置版式", systemImage: "arrow.counterclockwise") }
+            }
+            HStack(alignment: .top, spacing: 16) {
+                canvasArea
+                inspector
+                    .frame(width: 250)
+            }
+        }
+        .roundedPanel()
+    }
+
+    private var canvasArea: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color(hex: working.backgroundHex))
+                .frame(width: working.pageWidth * scale, height: working.pageHeight * scale)
+                .overlay(Rectangle().stroke(AppTheme.line))
+                .onTapGesture { selectedID = nil }
+            ForEach(working.elements) { element in
+                elementView(element)
+            }
+        }
+        .frame(width: working.pageWidth * scale, height: working.pageHeight * scale)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func elementView(_ element: CanvasElement) -> some View {
+        let isSelected = element.id == selectedID
+        CanvasElementContentView(
+            element: element,
+            displayText: PPTCanvasPreview.resolvedText(for: element, article: previewArticle, sequence: 1),
+            scale: scale
+        )
+        .frame(width: element.width * scale, height: element.height * scale)
+        .overlay(Rectangle().stroke(isSelected ? AppTheme.accent : AppTheme.line.opacity(0.6), lineWidth: isSelected ? 1.5 : 0.5))
+        .overlay(alignment: .bottomTrailing) {
+            if isSelected {
+                Circle()
+                    .fill(AppTheme.accent)
+                    .frame(width: 12, height: 12)
+                    .highPriorityGesture(resizeGesture(id: element.id))
+            }
+        }
+        .offset(x: element.x * scale, y: element.y * scale)
+        .onTapGesture { selectedID = element.id }
+        .gesture(dragGesture(id: element.id))
+    }
+
+    private func dragGesture(id: UUID) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                selectedID = id
+                guard let index = working.elements.firstIndex(where: { $0.id == id }) else { return }
+                if dragBase == nil { dragBase = (working.elements[index].x, working.elements[index].y) }
+                let base = dragBase!
+                let w = working.elements[index].width
+                let h = working.elements[index].height
+                working.elements[index].x = max(0, min(working.pageWidth - w, base.0 + Double(value.translation.width) / scale))
+                working.elements[index].y = max(0, min(working.pageHeight - h, base.1 + Double(value.translation.height) / scale))
+            }
+            .onEnded { _ in dragBase = nil; commit() }
+    }
+
+    private func resizeGesture(id: UUID) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard let index = working.elements.firstIndex(where: { $0.id == id }) else { return }
+                if sizeBase == nil { sizeBase = (working.elements[index].width, working.elements[index].height) }
+                let base = sizeBase!
+                working.elements[index].width = max(24, base.0 + Double(value.translation.width) / scale)
+                working.elements[index].height = max(16, base.1 + Double(value.translation.height) / scale)
+            }
+            .onEnded { _ in sizeBase = nil; commit() }
+    }
+
+    @ViewBuilder
+    private var inspector: some View {
+        if let index = selectedIndex {
+            let element = working.elements[index]
+            VStack(alignment: .leading, spacing: 10) {
+                Text("元素检查器").font(.system(size: 12, weight: .bold)).foregroundStyle(AppTheme.textSecondary)
+
+                if element.kind == .boundText {
+                    Text("绑定字段").font(.system(size: 11, weight: .semibold)).foregroundStyle(AppTheme.textTertiary)
+                    Picker("绑定字段", selection: bindingFor(index, \.fieldID)) {
+                        ForEach(ExportFieldCatalog.fields, id: \.id) { field in
+                            Text(field.label).tag(field.id)
+                        }
+                    }
+                    .labelsHidden()
+                    Text("文字前缀（可空）").font(.system(size: 11, weight: .semibold)).foregroundStyle(AppTheme.textTertiary)
+                    TextField("前缀", text: bindingFor(index, \.text))
+                        .textFieldStyle(.roundedBorder)
+                } else if element.kind == .staticText {
+                    Text("固定文字").font(.system(size: 11, weight: .semibold)).foregroundStyle(AppTheme.textTertiary)
+                    TextEditor(text: bindingFor(index, \.text))
+                        .font(.system(size: 12))
+                        .frame(height: 60)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.line))
+                } else {
+                    Button("替换图片") { replaceImage(index: index) }
+                }
+
+                if element.kind != .image {
+                    HStack(spacing: 8) {
+                        Text("字号").font(.system(size: 11)).foregroundStyle(AppTheme.textTertiary)
+                        Stepper("\(Int(element.fontSize))", value: bindingFor(index, \.fontSize), in: 6...96, step: 1)
+                            .labelsHidden()
+                        Text("\(Int(element.fontSize)) pt").font(.system(size: 11))
+                        Toggle("加粗", isOn: bindingFor(index, \.bold)).font(.system(size: 11))
+                    }
+                    Picker("对齐", selection: alignmentBinding(index)) {
+                        Text("左").tag(CanvasTextAlignment.leading)
+                        Text("中").tag(CanvasTextAlignment.center)
+                        Text("右").tag(CanvasTextAlignment.trailing)
+                    }
+                    .pickerStyle(.segmented)
+                    ColorPicker("颜色", selection: colorBinding(index))
+                        .font(.system(size: 11))
+                }
+
+                Button(role: .destructive) { deleteSelected() } label: {
+                    Label("删除元素", systemImage: "trash").font(.system(size: 12))
+                }
+                .padding(.top, 4)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("元素检查器").font(.system(size: 12, weight: .bold)).foregroundStyle(AppTheme.textSecondary)
+                Text("点击画板上的元素以编辑其绑定字段、文字与样式。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.textTertiary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelSecondary))
+        }
+    }
+
+    // MARK: - Bindings
+
+    private func bindingFor<T>(_ index: Int, _ keyPath: WritableKeyPath<CanvasElement, T>) -> Binding<T> {
+        Binding(
+            get: { working.elements.indices.contains(index) ? working.elements[index][keyPath: keyPath] : working.elements[0][keyPath: keyPath] },
+            set: { newValue in
+                guard working.elements.indices.contains(index) else { return }
+                working.elements[index][keyPath: keyPath] = newValue
+                commit()
+            }
+        )
+    }
+
+    private func alignmentBinding(_ index: Int) -> Binding<CanvasTextAlignment> {
+        Binding(
+            get: { working.elements.indices.contains(index) ? working.elements[index].alignment : .leading },
+            set: { newValue in
+                guard working.elements.indices.contains(index) else { return }
+                working.elements[index].alignment = newValue
+                commit()
+            }
+        )
+    }
+
+    private func colorBinding(_ index: Int) -> Binding<Color> {
+        Binding(
+            get: { working.elements.indices.contains(index) ? Color(hex: working.elements[index].colorHex) : .black },
+            set: { newColor in
+                guard working.elements.indices.contains(index) else { return }
+                working.elements[index].colorHex = newColor.hexString
+                commit()
+            }
+        )
+    }
+
+    // MARK: - Actions
+
+    private func addBoundText() {
+        var element = CanvasElement(kind: .boundText, x: 60, y: 60, width: 300, height: 40, fieldID: "titleEN", fontSize: 16)
+        offsetToAvoidOverlap(&element)
+        working.elements.append(element)
+        selectedID = element.id
+        commit()
+    }
+
+    private func addStaticText() {
+        var element = CanvasElement(kind: .staticText, x: 60, y: 60, width: 260, height: 30, text: "在此输入文字", fontSize: 14)
+        offsetToAvoidOverlap(&element)
+        working.elements.append(element)
+        selectedID = element.id
+        commit()
+    }
+
+    private func addImage() {
+        guard let base64 = pickImageAsPNGBase64() else { return }
+        var element = CanvasElement(kind: .image, x: 60, y: 60, width: 180, height: 130)
+        element.imageBase64 = base64
+        offsetToAvoidOverlap(&element)
+        working.elements.append(element)
+        selectedID = element.id
+        commit()
+    }
+
+    private func replaceImage(index: Int) {
+        guard working.elements.indices.contains(index), let base64 = pickImageAsPNGBase64() else { return }
+        working.elements[index].imageBase64 = base64
+        commit()
+    }
+
+    private func offsetToAvoidOverlap(_ element: inout CanvasElement) {
+        let count = working.elements.count
+        element.x = min(working.pageWidth - element.width, element.x + Double(count % 6) * 12)
+        element.y = min(working.pageHeight - element.height, element.y + Double(count % 6) * 12)
+    }
+
+    private func deleteSelected() {
+        guard let index = selectedIndex else { return }
+        working.elements.remove(at: index)
+        selectedID = nil
+        commit()
+    }
+
+    private func resetCanvas() {
+        working = .default
+        selectedID = nil
+        commit()
+    }
+
+    private func commit() { viewModel.updatePPTCanvas(working) }
+
+    private func pickImageAsPNGBase64() -> String? {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .image]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let image = NSImage(contentsOf: url),
+              let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        return png.base64EncodedString()
     }
 }

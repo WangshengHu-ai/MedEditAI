@@ -54,6 +54,8 @@ final class AppViewModel: ObservableObject {
     @Published var llmModel: String = AppViewModel.defaultLLMModel
     @Published var pptTemplateURL: URL?
     @Published var pptVisualTemplate: PPTVisualTemplate = .init()
+    /// 产品内 PPT 画板模板（可拖拽文本框/图片，实时预览）。
+    @Published var pptCanvas: PPTCanvasTemplate = .default
     @Published var promptTemplates: PromptTemplates = .default
     @Published var exportColumns: [ExportColumnConfig] = ProjectConfig.defaultExportColumns
     @Published var pptPlaceholderMappings: [PPTPlaceholderMapping] = ProjectConfig.defaultPPTPlaceholders
@@ -171,6 +173,10 @@ final class AppViewModel: ObservableObject {
     var activeDraft: ArticleDraft? { drafts.first }
     var previewDraftForTemplates: ArticleDraft {
         activeDraft ?? Self.draft(from: SampleData.articles.first ?? Self.placeholderArticle)
+    }
+    /// PPT 画板预览用文献：优先当前库第一篇，否则用示例文献，保证画板始终有可见的绑定内容。
+    var canvasPreviewArticle: Article {
+        Self.display(previewDraftForTemplates, id: articles.first?.id ?? "canvas-preview")
     }
     var availableExportFields: [CanonicalField] {
         let custom = customTasks
@@ -1009,6 +1015,7 @@ final class AppViewModel: ObservableObject {
         exportColumns = config.exportColumns
         pptPlaceholderMappings = config.pptPlaceholders
         customTasks = config.customTasks
+        pptCanvas = config.pptCanvas ?? .default
     }
 
     private func saveActiveProjectConfig() {
@@ -1022,7 +1029,8 @@ final class AppViewModel: ObservableObject {
             pptVisualTemplate: pptVisualTemplate,
             exportColumns: exportColumns,
             pptPlaceholders: pptPlaceholderMappings,
-            customTasks: customTasks
+            customTasks: customTasks,
+            pptCanvas: pptCanvas
         )
     }
 
@@ -1068,13 +1076,45 @@ final class AppViewModel: ObservableObject {
             pptVisualTemplate: pptVisualTemplate,
             exportColumns: exportColumns,
             pptPlaceholders: pptPlaceholderMappings,
-            customTasks: customTasks
+            customTasks: customTasks,
+            pptCanvas: pptCanvas
         )
     }
 
     func updatePPTVisualTemplate(_ template: PPTVisualTemplate) {
         pptVisualTemplate = template
         persist()
+    }
+
+    func updatePPTCanvas(_ canvas: PPTCanvasTemplate) {
+        pptCanvas = canvas
+        persist()
+    }
+
+    /// 画板文本框绑定字段的取值：把 `ExportFieldCatalog` 字段 id 映射为某篇文献的展示文本。
+    static func canvasFieldValue(_ fieldID: String, from article: Article, sequence: Int = 1) -> String {
+        switch fieldID {
+        case "sequence": return "\(sequence)"
+        case "topic": return article.topic
+        case "titleEN": return article.titleEN
+        case "titleCN": return article.titleCN
+        case "abstractEN": return article.abstractEN
+        case "abstractCN": return article.abstractCN
+        case "abstractLink", "url": return article.url
+        case "authors": return article.authors
+        case "date": return article.date
+        case "studyDesign": return article.studyType
+        case "journal": return article.journal
+        case "impactFactor": return article.impactFactor
+        case "quartile": return article.quartile
+        case "pmid": return article.pmid
+        case "product": return article.product
+        case "evidence": return article.evidence
+        case "citation": return article.citation
+        case "keywords": return article.keywords
+        case "note": return article.note
+        default: return article.customFields[fieldID] ?? ""
+        }
     }
 
     func updateExportColumns(_ columns: [ExportColumnConfig]) {

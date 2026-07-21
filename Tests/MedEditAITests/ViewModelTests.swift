@@ -766,6 +766,31 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(steps.contains { $0.contains("主题") }, "应上报主题分类进度")
     }
 
+    // MARK: - PPT 画板模板
+
+    func testPPTCanvasPersistsAcrossReload() {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ppt-canvas-\(UUID().uuidString).json")
+        let vm1 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        var canvas = PPTCanvasTemplate.default
+        canvas.elements.append(CanvasElement(kind: .staticText, x: 12, y: 24, width: 120, height: 32, text: "版权声明"))
+        vm1.updatePPTCanvas(canvas)
+
+        let vm2 = AppViewModel(pubmed: MockPubMed(), store: LibraryStore(fileURL: tempURL))
+        XCTAssertEqual(vm2.pptCanvas.elements.count, canvas.elements.count)   // 重启后画板保留
+        XCTAssertTrue(vm2.pptCanvas.elements.contains { $0.text == "版权声明" && $0.kind == .staticText })
+    }
+
+    func testCanvasFieldValueMapsArticleFields() {
+        let vm = makeViewModel()
+        vm.loadSampleData()
+        let article = vm.articles[0]
+        XCTAssertEqual(AppViewModel.canvasFieldValue("titleEN", from: article), article.titleEN)
+        XCTAssertEqual(AppViewModel.canvasFieldValue("journal", from: article), article.journal)
+        XCTAssertEqual(AppViewModel.canvasFieldValue("topic", from: article), article.topic)
+        XCTAssertEqual(AppViewModel.canvasFieldValue("sequence", from: article, sequence: 3), "3")
+    }
+
     // MARK: - FP22 导入自动识别文献字段
 
     func testAutoRecognizeFillsEmptyFields() {

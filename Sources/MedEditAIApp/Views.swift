@@ -696,14 +696,6 @@ struct SlidesView: View {
         Binding(get: { viewModel.exportColumns }, set: { viewModel.updateExportColumns($0) })
     }
 
-    private var pptMappingsBinding: Binding<[PPTPlaceholderMapping]> {
-        Binding(get: { viewModel.pptPlaceholderMappings }, set: { viewModel.updatePPTPlaceholderMappings($0) })
-    }
-
-    private var pptVisualTemplateBinding: Binding<PPTVisualTemplate> {
-        Binding(get: { viewModel.pptVisualTemplate }, set: { viewModel.updatePPTVisualTemplate($0) })
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -732,14 +724,20 @@ struct SlidesView: View {
                     )
                 } else {
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionTitle(title: "PPT 预览（onepage 模板）")
+                        SectionTitle(title: "PPT 预览（画板实时渲染）")
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 ForEach(Array(viewModel.articles.prefix(8).enumerated()), id: \.element.id) { index, article in
                                     Button {
                                         viewModel.chooseSlide(index: index)
                                     } label: {
-                                        SlideThumbnail(article: article, index: index + 1, selected: viewModel.selectedSlideIndex == index)
+                                        VStack(spacing: 4) {
+                                            PPTCanvasPreview(canvas: viewModel.pptCanvas, article: article, maxWidth: 116, sequence: index + 1)
+                                                .overlay(Rectangle().stroke(viewModel.selectedSlideIndex == index ? AppTheme.accent : Color.clear, lineWidth: 2))
+                                            Text("第 \(index + 1) 页")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(AppTheme.textTertiary)
+                                        }
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -749,11 +747,9 @@ struct SlidesView: View {
                     }
                     .roundedPanel()
 
-                    SlideSettingsPanel(templateName: viewModel.pptTemplateName)
-
-                    PPTVisualTemplateEditorPanel(template: pptVisualTemplateBinding)
+                    PPTCanvasEditorPanel(viewModel: viewModel)
+                        .id(viewModel.selectedProjectID)
                     ExportTemplateEditorPanel(columns: exportColumnsBinding, availableFields: viewModel.availableExportFields, previewDrafts: viewModel.activeDrafts)
-                    PPTTemplateEditorPanel(mappings: pptMappingsBinding, availableFields: viewModel.availableExportFields, previewDraft: viewModel.activeDraft)
                 }
             }
             .padding(24)
@@ -1033,16 +1029,16 @@ struct InsightDetailView: View {
 
 struct SlidePreviewDetailView: View {
     let article: Article
-    let template: PPTVisualTemplate
+    let canvas: PPTCanvasTemplate
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("当前幻灯详情")
+                Text("当前幻灯详情（画板实时渲染）")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
-                SlidePreviewCard(article: article, template: template)
+                PPTCanvasPreview(canvas: canvas, article: article, maxWidth: 300)
             }
             .padding(20)
         }
