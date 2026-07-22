@@ -139,18 +139,24 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["btn-add-custom-task"].waitForExistence(timeout: 10))
     }
 
-    func testSlidesAndSettingsExposeTemplateEditorsAndDefaultConfig() {
+    func testSettingsExposesDefaultProjectConfig() {
         let app = launchApp()
         loadSampleData(in: app)
 
-        // 先在侧栏新鲜可见时进入设置，避免宽内容页导致 NavigationSplitView 侧栏收起后 nav 不可点。
+        // 侧栏新鲜可见时进入项目设置（工作台内），仅一次 nav 点击，避免宽内容页收起侧栏后 nav 不可点。
         element("nav-settings", in: app).click()
         XCTAssertTrue(app.buttons["btn-save-default-config"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["当前项目配置在哪里修改"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["导出交付 Excel"].exists)
         XCTAssertFalse(app.buttons["导出 onepage PPT"].exists)
+    }
 
-        // 产出生成页现用 PPT 画板（可拖拽文本框/图片，实时预览）+ Excel 导出模板；放最后避免再切走。
+    func testSlidesExposeCanvasEditors() {
+        let app = launchApp()
+        loadSampleData(in: app)
+
+        // 产出生成页现用 PPT 画板（可拖拽文本框/图片，实时预览）+ Excel 导出模板；
+        // 单独一条用例、侧栏新鲜时仅一次 nav 点击，避免宽画板页收起侧栏。
         element("nav-slides", in: app).click()
         XCTAssertTrue(app.buttons["btn-canvas-add-bound"].waitForExistence(timeout: 10), "应提供画板添加文本框")
         XCTAssertTrue(app.buttons["btn-canvas-add-image"].waitForExistence(timeout: 10), "应提供画板添加图片")
@@ -160,7 +166,9 @@ final class MedEditAIUITests: XCTestCase {
     func testSystemSettingsButtonShowsSystemKeysNotProjectConfig() {
         let app = launchApp()
         // 左下角“设置”按钮进入系统设置（仅系统级密钥与 LLM 接口，跨项目共享）。
-        app.buttons["btn-settings"].click()
+        let settingsBtn = app.buttons["btn-settings"]
+        XCTAssertTrue(settingsBtn.waitForExistence(timeout: 10), "侧栏左下角应有“设置”按钮")
+        settingsBtn.click()
         XCTAssertTrue(app.staticTexts["系统密钥"].waitForExistence(timeout: 10), "系统设置应含“系统密钥”")
         XCTAssertTrue(app.textFields["field-llm-endpoint"].waitForExistence(timeout: 10), "系统设置应含 LLM 接口地址")
         XCTAssertTrue(app.textFields["field-llm-model"].waitForExistence(timeout: 10), "系统设置应含 LLM 模型")
