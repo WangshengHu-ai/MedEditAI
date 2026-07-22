@@ -156,4 +156,15 @@ final class MedEditAIUITests: XCTestCase {
         XCTAssertTrue(app.buttons["btn-canvas-add-image"].waitForExistence(timeout: 10), "应提供画板添加图片")
         XCTAssertTrue(app.staticTexts["Excel 导出模板"].waitForExistence(timeout: 10))
     }
+
+    func testSystemSettingsButtonShowsSystemKeysNotProjectConfig() {
+        let app = launchApp()
+        // 左下角“设置”按钮进入系统设置（仅系统级密钥与 LLM 接口，跨项目共享）。
+        app.buttons["btn-settings"].click()
+        XCTAssertTrue(app.staticTexts["系统密钥"].waitForExistence(timeout: 10), "系统设置应含“系统密钥”")
+        XCTAssertTrue(app.textFields["field-llm-endpoint"].waitForExistence(timeout: 10), "系统设置应含 LLM 接口地址")
+        XCTAssertTrue(app.textFields["field-llm-model"].waitForExistence(timeout: 10), "系统设置应含 LLM 模型")
+        // 系统设置里不应出现项目级的“保存默认项目配置”。
+        XCTAssertFalse(app.buttons["btn-save-default-config"].exists, "系统设置不应混入项目级默认配置")
+    }
 }

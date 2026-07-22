@@ -7,7 +7,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     case library
     case enrich
     case slides
-    case settings
+    case settings          // 项目设置（工作台内）
+    case systemSettings    // 系统设置（左下角按钮）
 
     var id: String { rawValue }
 
@@ -18,7 +19,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .library: "文献库"
         case .enrich: "AI 加工"
         case .slides: "产出生成"
-        case .settings: "设置"
+        case .settings: "项目设置"
+        case .systemSettings: "系统设置"
         }
     }
 
@@ -29,7 +31,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .library: "books.vertical.fill"
         case .enrich: "sparkles"
         case .slides: "play.rectangle.on.rectangle.fill"
-        case .settings: "gearshape.fill"
+        case .settings: "slider.horizontal.3"
+        case .systemSettings: "gearshape.fill"
         }
     }
 }

@@ -10,7 +10,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $viewModel.selectedSection) {
             Section("工作台") {
-                ForEach(AppSection.allCases) { section in
+                ForEach(AppSection.allCases.filter { $0 != .systemSettings }) { section in
                     Label(section.title, systemImage: section.systemImage)
                         .tag(section)
                         .accessibilityIdentifier("nav-\(section.rawValue)")
@@ -86,6 +86,14 @@ struct SidebarView: View {
                 .accessibilityIdentifier("btn-add-project")
 
                 Spacer()
+
+                Button {
+                    viewModel.navigate(to: .systemSettings)
+                } label: {
+                    Label("设置", systemImage: "gearshape.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("btn-settings")
             }
             .padding(12)
             .background(.bar)
@@ -757,7 +765,7 @@ struct SlidesView: View {
     }
 }
 
-struct SettingsView: View {
+struct ProjectSettingsView: View {
     @ObservedObject var viewModel: AppViewModel
     @State private var defaultConfig: ProjectConfig
 
@@ -789,7 +797,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: "系统设置", subtitle: "仅保留系统密钥与默认项目配置；Excel 导入格式会在导入时自动识别") {
+                PageHeader(title: "项目设置", subtitle: "管理当前项目配置与默认项目配置；新建项目自动继承默认项目配置") {
                     HStack(spacing: 10) {
                         Button("使用当前项目覆盖默认配置") {
                             defaultConfig = viewModel.makeCurrentProjectConfig()
@@ -804,69 +812,34 @@ struct SettingsView: View {
                     }
                 }
 
-                SectionTitle(title: "系统密钥")
-                HStack(alignment: .top, spacing: 16) {
+                SectionTitle(title: "当前项目")
+                VStack(alignment: .leading, spacing: 12) {
+                    InfoPanel(
+                        title: "当前项目配置在哪里修改",
+                        text: "当前项目的 AI 加工任务、自定义研究类型、导出列、PPT 画板都属于项目配置。AI 加工相关配置在“AI 加工”页维护，导出模板和 PPT 画板在“产出生成”页维护；系统级密钥请到左下角“系统设置”里维护。",
+                        tags: ["当前项目", "项目级配置", "与默认值分离"]
+                    )
                     VStack(spacing: 0) {
-                        SettingsSecureRow(
-                            title: "LLM API Key",
-                            subtitle: "必填；用于调用云端 LLM 执行翻译、研究设计和主题分类",
-                            placeholder: "sk-... 或 智谱 id.secret",
-                            text: $viewModel.apiKey
-                        )
+                        SettingInlineRow(title: "当前项目", subtitle: viewModel.selectedProject.name, trailing: "项目级")
                         Divider()
-                        SettingsFieldRow(
-                            title: "LLM 接口地址",
-                            subtitle: "OpenAI 兼容 /chat/completions；默认智谱 BigModel，可改为其他服务",
-                            placeholder: AppViewModel.defaultLLMEndpoint,
-                            text: $viewModel.llmEndpoint,
-                            accessibilityID: "field-llm-endpoint"
-                        )
+                        SettingInlineRow(title: "当前 IF / 分区数据", subtitle: viewModel.impactFactorByJournal.isEmpty ? "未导入" : "已导入 \(viewModel.impactFactorByJournal.count) 条", trailing: "当前项目")
                         Divider()
-                        SettingsFieldRow(
-                            title: "LLM 模型",
-                            subtitle: "如 glm-4-flash（默认，免费）/ glm-4 / gpt-4o-mini",
-                            placeholder: AppViewModel.defaultLLMModel,
-                            text: $viewModel.llmModel,
-                            accessibilityID: "field-llm-model"
-                        )
+                        SettingInlineRow(title: "当前 PPT 画板", subtitle: "\(viewModel.pptCanvas.elements.count) 个元素", trailing: "当前项目")
                         Divider()
-                        SettingsSecureRow(
-                            title: "NCBI API Key",
-                            subtitle: "可选；用于提升 PubMed 检索速率并减少限流",
-                            placeholder: "ncbi-...",
-                            text: $viewModel.ncbiApiKey
-                        )
+                        SettingInlineRow(title: "当前自定义加工任务", subtitle: viewModel.customTasks.isEmpty ? "未配置" : "已配置 \(viewModel.customTasks.count) 个任务", trailing: "当前项目")
+                        Divider()
+                        SettingsActionRow(title: "跳转到 AI 加工页", subtitle: "维护当前项目的自定义 AI 加工任务、任务开关和加工队列。", button: "前往") {
+                            viewModel.navigate(to: .enrich)
+                        }
+                        Divider()
+                        SettingsActionRow(title: "跳转到产出生成页", subtitle: "维护当前项目的 Excel 导出模板与 PPT 画板。", button: "前往") {
+                            viewModel.navigate(to: .slides)
+                        }
                     }
                     .roundedPanel(padding: 0)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        InfoPanel(
-                            title: "当前项目配置在哪里修改",
-                            text: "当前项目的 AI 加工任务、自定义研究类型、导出列、PPT 占位符映射都属于项目配置，不在这里直接混编辑。AI 加工相关配置在“AI 加工”页维护，导出模板和 PPT 模板在“产出生成”页维护。",
-                            tags: ["当前项目", "项目级配置", "与默认值分离"]
-                        )
-                        VStack(spacing: 0) {
-                            SettingInlineRow(title: "当前项目", subtitle: viewModel.selectedProject.name, trailing: "项目级")
-                            Divider()
-                            SettingInlineRow(title: "当前 IF / 分区数据", subtitle: viewModel.impactFactorByJournal.isEmpty ? "未导入" : "已导入 \(viewModel.impactFactorByJournal.count) 条", trailing: "当前项目")
-                            Divider()
-                            SettingInlineRow(title: "当前 PPT 样式模板", subtitle: viewModel.pptVisualTemplate.name, trailing: "当前项目")
-                            Divider()
-                            SettingInlineRow(title: "当前自定义加工任务", subtitle: viewModel.customTasks.isEmpty ? "未配置" : "已配置 \(viewModel.customTasks.count) 个任务", trailing: "当前项目")
-                            Divider()
-                            SettingsActionRow(title: "跳转到 AI 加工页", subtitle: "维护当前项目的自定义 AI 加工任务、任务开关和加工队列。", button: "前往") {
-                                viewModel.navigate(to: .enrich)
-                            }
-                            Divider()
-                            SettingsActionRow(title: "跳转到产出生成页", subtitle: "维护当前项目的 Excel 导出模板、PPT 占位符映射和 PPT 模板。", button: "前往") {
-                                viewModel.navigate(to: .slides)
-                            }
-                        }
-                        .roundedPanel(padding: 0)
-                        .accessibilityIdentifier("panel-current-project-config")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("panel-current-project-config")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 SectionTitle(title: "默认项目配置")
                 HStack(alignment: .top, spacing: 16) {
@@ -901,6 +874,55 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+            .padding(24)
+        }
+    }
+}
+
+struct SystemSettingsView: View {
+    @ObservedObject var viewModel: AppViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PageHeader(title: "系统设置", subtitle: "系统级密钥与 LLM 接口配置，跨项目共享；项目相关配置请到工作台“项目设置”维护") {
+                    EmptyView()
+                }
+
+                SectionTitle(title: "系统密钥")
+                VStack(spacing: 0) {
+                    SettingsSecureRow(
+                        title: "LLM API Key",
+                        subtitle: "必填；用于调用云端 LLM 执行翻译、研究设计和主题分类",
+                        placeholder: "sk-... 或 智谱 id.secret",
+                        text: $viewModel.apiKey
+                    )
+                    Divider()
+                    SettingsFieldRow(
+                        title: "LLM 接口地址",
+                        subtitle: "OpenAI 兼容 /chat/completions；默认智谱 BigModel，可改为其他服务",
+                        placeholder: AppViewModel.defaultLLMEndpoint,
+                        text: $viewModel.llmEndpoint,
+                        accessibilityID: "field-llm-endpoint"
+                    )
+                    Divider()
+                    SettingsFieldRow(
+                        title: "LLM 模型",
+                        subtitle: "如 glm-4-flash（默认，免费）/ glm-4 / gpt-4o-mini",
+                        placeholder: AppViewModel.defaultLLMModel,
+                        text: $viewModel.llmModel,
+                        accessibilityID: "field-llm-model"
+                    )
+                    Divider()
+                    SettingsSecureRow(
+                        title: "NCBI API Key",
+                        subtitle: "可选；用于提升 PubMed 检索速率并减少限流",
+                        placeholder: "ncbi-...",
+                        text: $viewModel.ncbiApiKey
+                    )
+                }
+                .roundedPanel(padding: 0)
             }
             .padding(24)
         }
@@ -1021,6 +1043,22 @@ struct InsightDetailView: View {
                     .foregroundStyle(AppTheme.textSecondary)
                     .textCase(.uppercase)
                 InfoPanel(title: "完整工作流", text: "从 PubMed 检索或导入本地清单 → AI 加工（翻译 / 研究设计 / 主题分类 / IF 匹配）→ 人工复核 → 导出 Excel 与 onepage PPT。", tags: ["检索/导入", "AI 加工", "导出"])
+            }
+            .padding(20)
+        }
+    }
+}
+
+struct SystemSettingsDetailView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("系统设置说明")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .textCase(.uppercase)
+                InfoPanel(title: "系统设置 vs 项目设置", text: "系统设置只保存跨项目共享的系统级密钥（LLM API Key、接口地址、模型、NCBI Key）。项目相关的加工任务、导出模板、PPT 画板与默认项目配置请到工作台的“项目设置”里维护。", tags: ["系统级", "跨项目共享", "仅密钥与接口"])
+                InfoPanel(title: "默认 LLM", text: "默认使用智谱 BigModel 的 glm-4-flash（免费）。可改为任意 OpenAI 兼容的 /chat/completions 接口与模型。", tags: ["BigModel", "OpenAI 兼容"])
             }
             .padding(20)
         }

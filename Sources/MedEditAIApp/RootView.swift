@@ -56,7 +56,9 @@ private struct ContentShellView: View {
         case .slides:
             SlidesView(viewModel: viewModel)
         case .settings:
-            SettingsView(viewModel: viewModel)
+            ProjectSettingsView(viewModel: viewModel)
+        case .systemSettings:
+            SystemSettingsView(viewModel: viewModel)
         }
     }
 }
@@ -78,6 +80,8 @@ private struct DetailShellView: View {
             EnrichDetailView(viewModel: viewModel)
         case .settings:
             SettingsDetailView(viewModel: viewModel)
+        case .systemSettings:
+            SystemSettingsDetailView()
         }
     }
 }
